@@ -7,7 +7,7 @@ use crate::analysis::analyze_image;
 use crate::metrics::compute_metrics;
 use crate::preprocess::trace_settings_for_preset;
 use crate::svg::optimize_svg;
-use crate::types::{QualityPreset, VectorizationReport};
+use crate::types::{Complexity, ImageAnalysis, ImageKind, QualityPreset, VectorizationReport};
 use crate::vectorizer::trace_to_svg;
 
 #[derive(Debug, Clone)]
@@ -55,7 +55,7 @@ pub fn vectorize(
             quality_preset: quality,
             metrics: metrics.clone(),
         };
-        let score = candidate_score(&metrics, options.max_file_size);
+        let score = candidate_score(&analysis, &metrics, options.max_file_size);
 
         if best
             .as_ref()
@@ -123,17 +123,52 @@ fn quality_search_order(start: QualityPreset, max_iterations: usize) -> Vec<Qual
     order
 }
 
-fn candidate_score(metrics: &crate::metrics::QualityMetrics, max_file_size: usize) -> f64 {
-    let size_penalty = if metrics.file_size > max_file_size {
-        ((metrics.file_size - max_file_size) as f64 / max_file_size.max(1) as f64).min(1.0)
+fn candidate_score(
+    analysis: &ImageAnalysis,
+    metrics: &crate::metrics::QualityMetrics,
+    max_file_size: usize,
+) -> f64 {
+    let (target_size, target_paths) = complexity_budget(analysis);
+    let oversize_penalty = if metrics.file_size > max_file_size {
+        let oversize = (metrics.file_size - max_file_size) as f64 / max_file_size.max(1) as f64;
+        oversize.ln_1p() * 0.25
     } else {
         0.0
     };
-    metrics.ssim * 0.6
-        + metrics.ssim_perceptual * 0.15
-        + metrics.edge_similarity * 0.15
-        + metrics.topology_score * 0.1
-        - size_penalty * 0.15
+    let size_penalty = excess_penalty(metrics.file_size as f64, target_size) * 0.12;
+    let path_penalty = excess_penalty(metrics.path_count as f64, target_paths) * 0.18;
+    let color_score = (1.0 - (metrics.delta_e / 40.0).min(1.0)).clamp(0.0, 1.0);
+
+    metrics.ssim * 0.42
+        + metrics.ssim_perceptual * 0.18
+        + metrics.edge_similarity * 0.18
+        + metrics.topology_score * 0.12
+        + color_score * 0.10
+        - size_penalty
+        - path_penalty
+        - oversize_penalty
+}
+
+fn excess_penalty(actual: f64, target: f64) -> f64 {
+    let excess = (actual / target.max(1.0) - 1.0).max(0.0);
+    excess.ln_1p()
+}
+
+fn complexity_budget(analysis: &ImageAnalysis) -> (f64, f64) {
+    match (analysis.image_type, analysis.complexity) {
+        (ImageKind::Icon, Complexity::Simple) => (2_000.0, 10.0),
+        (ImageKind::Icon, Complexity::Medium) => (2_500.0, 16.0),
+        (ImageKind::Icon, Complexity::Complex) => (3_500.0, 24.0),
+        (ImageKind::Logo, Complexity::Simple) => (3_000.0, 14.0),
+        (ImageKind::Logo, Complexity::Medium) => (4_000.0, 20.0),
+        (ImageKind::Logo, Complexity::Complex) => (6_000.0, 28.0),
+        (ImageKind::Illustration, Complexity::Simple) => (8_000.0, 40.0),
+        (ImageKind::Illustration, Complexity::Medium) => (12_000.0, 72.0),
+        (ImageKind::Illustration, Complexity::Complex) => (16_000.0, 96.0),
+        (ImageKind::Photo, Complexity::Simple) => (16_000.0, 48.0),
+        (ImageKind::Photo, Complexity::Medium) => (24_000.0, 96.0),
+        (ImageKind::Photo, Complexity::Complex) => (32_000.0, 144.0),
+    }
 }
 
 pub fn vectorize_logo(
@@ -167,6 +202,9 @@ pub fn vectorize_icon(input_path: &Path) -> Result<(String, VectorizationReport)
 mod tests {
     use image::{Rgba, RgbaImage};
     use tempfile::tempdir;
+
+    use crate::metrics::QualityMetrics;
+    use crate::types::{Complexity, ImageAnalysis, ImageKind};
 
     use super::{quality_search_order, vectorize, QualityPreset, VectorizeOptions};
 
@@ -221,5 +259,48 @@ mod tests {
 
         assert!(report.metrics.ssim > 0.8);
         assert!(report.metrics.path_count >= 1);
+    }
+
+    #[test]
+    fn candidate_score_prefers_compact_icon_when_quality_gain_is_small() {
+        let analysis = ImageAnalysis {
+            width: 24,
+            height: 24,
+            unique_colors: 24,
+            top_10_coverage: 0.94,
+            top_50_coverage: 1.0,
+            color_variance: 45.0,
+            edge_density: 0.2,
+            dominant_colors: vec!["#000000".to_string()],
+            image_type: ImageKind::Icon,
+            complexity: Complexity::Medium,
+        };
+        let compact = QualityMetrics {
+            ssim: 0.88,
+            ssim_perceptual: 0.92,
+            edge_similarity: 0.95,
+            delta_e: 9.0,
+            topology_score: 1.0,
+            psnr: 16.0,
+            mae: 20.0,
+            file_size: 2_000,
+            path_count: 8,
+        };
+        let bloated = QualityMetrics {
+            ssim: 0.91,
+            ssim_perceptual: 0.94,
+            edge_similarity: 0.96,
+            delta_e: 8.0,
+            topology_score: 1.0,
+            psnr: 17.0,
+            mae: 15.0,
+            file_size: 10_000,
+            path_count: 120,
+        };
+
+        assert!(
+            super::candidate_score(&analysis, &compact, 100_000)
+                > super::candidate_score(&analysis, &bloated, 100_000)
+        );
     }
 }

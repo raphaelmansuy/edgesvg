@@ -1,5 +1,6 @@
 use regex::Regex;
 use roxmltree::Document;
+use std::collections::HashMap;
 
 pub fn optimize_svg(svg: &str, precision: u32) -> String {
     let parsed = match Document::parse(svg) {
@@ -9,6 +10,7 @@ pub fn optimize_svg(svg: &str, precision: u32) -> String {
 
     let optimized = round_path_coordinates(svg, precision);
     let optimized = optimize_paint_attributes(&optimized);
+    let optimized = merge_same_style_paths(&optimized);
     let optimized = remove_redundant_attributes(&optimized);
     let optimized = clean_namespaces(&optimized, &parsed);
     final_cleanup(&optimized)
@@ -26,7 +28,7 @@ fn round_path_coordinates(svg: &str, precision: u32) -> String {
 
 fn round_path_data(d: &str, precision: u32) -> String {
     let num_re = Regex::new(r"-?\d*\.?\d+").expect("valid numeric regex");
-    num_re
+    let rounded = num_re
         .replace_all(d, |caps: &regex::Captures<'_>| {
             let value = caps
                 .get(0)
@@ -41,7 +43,19 @@ fn round_path_data(d: &str, precision: u32) -> String {
                     .to_string()
             }
         })
-        .into_owned()
+        .into_owned();
+    simplify_path_data(&rounded)
+}
+
+fn simplify_path_data(d: &str) -> String {
+    let repeated_ws = Regex::new(r"\s+").expect("valid repeated whitespace regex");
+    let cmd_space =
+        Regex::new(r"([MmLlHhVvCcSsQqTtAaZz])\s+").expect("valid command spacing regex");
+    let comma_space = Regex::new(r"\s*,\s*").expect("valid comma spacing regex");
+
+    let simplified = repeated_ws.replace_all(d.trim(), " ");
+    let simplified = cmd_space.replace_all(&simplified, "$1");
+    comma_space.replace_all(&simplified, ",").into_owned()
 }
 
 fn optimize_paint_attributes(svg: &str) -> String {
@@ -108,8 +122,111 @@ fn remove_redundant_attributes(svg: &str) -> String {
         optimized = attr_re.replace_all(&optimized, "").into_owned();
     }
 
+    let zero_translate = Regex::new(r#"\stransform="translate\(0(?:\.0+)?,0(?:\.0+)?\)""#)
+        .expect("valid zero translate regex");
+    optimized = zero_translate.replace_all(&optimized, "").into_owned();
+
     let stroke_none = Regex::new(r#"\sstroke="none""#).expect("valid stroke none attribute regex");
     stroke_none.replace_all(&optimized, "").into_owned()
+}
+
+fn merge_same_style_paths(svg: &str) -> String {
+    let path_re = Regex::new(r#"<path\b([^>]*)/>"#).expect("valid self-closing path regex");
+    let d_re = Regex::new(r#"\sd="([^"]*)""#).expect("valid d attribute regex");
+    let mut segments = Vec::new();
+    let mut last_end = 0usize;
+
+    for caps in path_re.captures_iter(svg) {
+        let full = match caps.get(0) {
+            Some(m) => m,
+            None => continue,
+        };
+        let attrs = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
+        if full.start() > last_end {
+            segments.push(Segment::Text(svg[last_end..full.start()].to_string()));
+        }
+        let style = d_re.replace(attrs, "").to_string();
+        let style = normalize_attr_whitespace(&style);
+        let d = d_re
+            .captures(attrs)
+            .and_then(|d_caps| d_caps.get(1).map(|m| m.as_str().to_string()))
+            .unwrap_or_default();
+        segments.push(Segment::Path {
+            raw: full.as_str().to_string(),
+            d,
+            style,
+        });
+        last_end = full.end();
+    }
+
+    if segments.is_empty() {
+        return svg.to_owned();
+    }
+
+    if last_end < svg.len() {
+        segments.push(Segment::Text(svg[last_end..].to_string()));
+    }
+
+    let mut first_by_style: HashMap<String, usize> = HashMap::new();
+    let mut merged_paths: HashMap<usize, Vec<String>> = HashMap::new();
+    let mut remove = vec![false; segments.len()];
+
+    for (index, segment) in segments.iter().enumerate() {
+        let Segment::Path { d, style, .. } = segment else {
+            continue;
+        };
+        if let Some(first_index) = first_by_style.get(style) {
+            merged_paths
+                .entry(*first_index)
+                .or_default()
+                .push(d.clone());
+            remove[index] = true;
+        } else {
+            first_by_style.insert(style.clone(), index);
+        }
+    }
+
+    let mut output = String::new();
+    for (index, segment) in segments.into_iter().enumerate() {
+        if remove[index] {
+            continue;
+        }
+        match segment {
+            Segment::Text(text) => output.push_str(&text),
+            Segment::Path { raw, d, .. } => {
+                let merged = merged_paths.get(&index);
+                let merged_d = merged
+                    .map(|paths| {
+                        let mut combined = Vec::with_capacity(paths.len() + 1);
+                        combined.push(d.clone());
+                        combined.extend(paths.iter().cloned());
+                        combined.join(" ")
+                    })
+                    .unwrap_or(d);
+                output.push_str(
+                    &d_re
+                        .replace(&raw, format!(r#" d="{}""#, merged_d))
+                        .into_owned(),
+                );
+            }
+        }
+    }
+
+    output
+}
+
+fn normalize_attr_whitespace(attrs: &str) -> String {
+    let repeated_ws = Regex::new(r"\s+").expect("valid repeated whitespace regex");
+    repeated_ws.replace_all(attrs.trim(), " ").into_owned()
+}
+
+enum Segment {
+    Text(String),
+    Path {
+        raw: String,
+        d: String,
+        style: String,
+    },
 }
 
 fn clean_namespaces(svg: &str, parsed: &Document<'_>) -> String {
@@ -159,7 +276,7 @@ mod tests {
     fn rounds_numeric_precision_like_reference_optimizer() {
         let d = "M 0.12345 0.98765 L 10.111 20.222 Z";
         let rounded = round_path_data(d, 1);
-        assert_eq!(rounded, "M 0.1 1 L 10.1 20.2 Z");
+        assert_eq!(rounded, "M0.1 1 L10.1 20.2 Z");
     }
 
     #[test]
@@ -175,7 +292,7 @@ mod tests {
         assert!(!optimized.contains("stroke=\"none\""));
         assert!(!optimized.contains("opacity=\"1\""));
         assert!(!optimized.contains("id=\"a\""));
-        assert!(optimized.contains(r#"d="M 0.1 2""#));
+        assert!(optimized.contains(r#"d="M0.1 2""#));
     }
 
     #[test]
@@ -183,5 +300,14 @@ mod tests {
         assert_eq!(optimize_color("rgb(255,0,0)"), "red");
         assert_eq!(optimize_color("#ff00ff"), "magenta");
         assert_eq!(optimize_color("#112233"), "#123");
+    }
+
+    #[test]
+    fn optimizer_merges_same_style_paths_and_removes_zero_translate() {
+        let svg = r##"<svg><path d="M 0 0" fill="#000000" transform="translate(0,0)"/><path d="M 1 1" fill="#000000" transform="translate(0,0)"/><path d="M 2 2" fill="#ffffff"/></svg>"##;
+        let optimized = optimize_svg(svg, 1);
+        assert_eq!(optimized.matches("<path").count(), 2);
+        assert!(optimized.contains(r#"d="M0 0 M1 1""#));
+        assert!(!optimized.contains(r#"transform="translate(0,0)""#));
     }
 }
