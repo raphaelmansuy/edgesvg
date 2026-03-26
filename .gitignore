@@ -21,6 +21,11 @@ coverage/
 Thumbs.db
 .idea/
 .vscode/
+sdks/node/node_modules/
+sdks/node/dist/
+sdks/node/native/*.node
+crates/edgesvg-wasm/pkg/
+sdks/python/.pytest_cache/
 
 # Temp files
 *.tmp

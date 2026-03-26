@@ -1,7 +1,7 @@
 use clap::ValueEnum;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ImageKind {
     Logo,
@@ -10,7 +10,7 @@ pub enum ImageKind {
     Photo,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Complexity {
     Simple,
@@ -18,28 +18,24 @@ pub enum Complexity {
     Complex,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum QualityPreset {
     Figma,
+    #[default]
     Balanced,
     Quality,
     Ultra,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum LogoQualityPreset {
     Clean,
+    #[default]
     Balanced,
     High,
     Ultra,
-}
-
-impl Default for LogoQualityPreset {
-    fn default() -> Self {
-        Self::Balanced
-    }
 }
 
 impl QualityPreset {
@@ -51,27 +47,35 @@ impl QualityPreset {
     }
 }
 
-impl Default for QualityPreset {
-    fn default() -> Self {
-        Self::Balanced
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AutoMode {
     Logo,
     Premium,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TraceMode {
     Spline,
     Polygon,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum VectorizeMethod {
+    #[default]
+    Hifi,
+    Logo,
+    Premium,
+    Auto,
+    Smart,
+    Optimal,
+    Bayesian,
+    Sam,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImageAnalysis {
     pub width: u32,
     pub height: u32,

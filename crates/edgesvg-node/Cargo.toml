@@ -1,0 +1,20 @@
+[package]
+name = "edgesvg-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "EdgeSVG Node.js native addon"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+edgesvg = { path = "../.." }
+napi = { version = "2", features = ["napi4"] }
+napi-derive = "2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[build-dependencies]
+napi-build = "2"

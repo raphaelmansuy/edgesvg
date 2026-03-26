@@ -1,0 +1,9 @@
+{
+  "name": "edgesvg-darwin-arm64",
+  "version": "0.2.0",
+  "main": "edgesvg-node.darwin-arm64.node",
+  "files": ["*.node"],
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "license": "MIT"
+}

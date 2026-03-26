@@ -15,21 +15,24 @@ use crate::svg::optimize_svg;
 use crate::types::{AutoMode, ImageKind, LogoQualityPreset, QualityPreset, VectorizationReport};
 use crate::vectorizer::trace_to_svg;
 
+pub type RgbColor = (u8, u8, u8);
+pub type MonochromeIconDetection = (bool, Option<RgbColor>);
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AutoDecision {
     pub mode: AutoMode,
     pub logo_quality: LogoQualityPreset,
-    pub monochrome_color: Option<(u8, u8, u8)>,
+    pub monochrome_color: Option<RgbColor>,
 }
 
-pub fn is_monochrome_icon(input_path: &Path) -> Result<(bool, Option<(u8, u8, u8)>)> {
+pub fn is_monochrome_icon(input_path: &Path) -> Result<MonochromeIconDetection> {
     let image = image::open(input_path)
         .with_context(|| format!("unable to open image {}", input_path.display()))?
         .to_rgba8();
     Ok(is_monochrome_icon_rgba(&image))
 }
 
-fn is_monochrome_icon_rgba(image: &RgbaImage) -> (bool, Option<(u8, u8, u8)>) {
+fn is_monochrome_icon_rgba(image: &RgbaImage) -> MonochromeIconDetection {
     let mut visible = Vec::<[u8; 3]>::new();
     let mut opaque = 0usize;
     for pixel in image.pixels() {
@@ -64,23 +67,26 @@ fn is_monochrome_icon_rgba(image: &RgbaImage) -> (bool, Option<(u8, u8, u8)>) {
 }
 
 pub fn determine_auto_mode(input_path: &Path) -> Result<AutoDecision> {
-    let (mono, color) = is_monochrome_icon(input_path)?;
+    let image = image::open(input_path)
+        .with_context(|| format!("unable to open image {}", input_path.display()))?;
+    Ok(determine_auto_mode_image(&image))
+}
+
+pub fn determine_auto_mode_image(image: &DynamicImage) -> AutoDecision {
+    let (mono, color) = is_monochrome_icon_rgba(&image.to_rgba8());
     if mono {
-        return Ok(AutoDecision {
+        return AutoDecision {
             mode: AutoMode::Logo,
             logo_quality: LogoQualityPreset::Ultra,
             monochrome_color: color,
-        });
+        };
     }
 
-    let image = image::open(input_path)
-        .with_context(|| format!("unable to open image {}", input_path.display()))?;
-    let analysis = analyze_image(&image);
-
+    let analysis = analyze_image(image);
     if matches!(analysis.image_type, ImageKind::Logo | ImageKind::Icon)
         && analysis.unique_colors <= 1000
     {
-        Ok(AutoDecision {
+        AutoDecision {
             mode: AutoMode::Logo,
             logo_quality: if analysis.top_10_coverage > 0.90 {
                 LogoQualityPreset::Clean
@@ -88,29 +94,39 @@ pub fn determine_auto_mode(input_path: &Path) -> Result<AutoDecision> {
                 LogoQualityPreset::Ultra
             },
             monochrome_color: None,
-        })
+        }
     } else {
-        Ok(AutoDecision {
+        AutoDecision {
             mode: AutoMode::Premium,
             logo_quality: LogoQualityPreset::Ultra,
             monochrome_color: None,
-        })
+        }
     }
 }
 
 pub fn vectorize_auto(input_path: &Path) -> Result<(String, VectorizationReport)> {
+    let image = image::open(input_path)
+        .with_context(|| format!("unable to open image {}", input_path.display()))?;
+    vectorize_auto_image(&image)
+}
+
+pub fn vectorize_auto_image(original: &DynamicImage) -> Result<(String, VectorizationReport)> {
     let mut outcomes = Vec::new();
 
-    if let Ok((svg, report)) = vectorize_logo_premium(input_path, LogoQualityPreset::Ultra, None) {
+    if let Ok((svg, report)) =
+        vectorize_logo_premium_image(original, LogoQualityPreset::Ultra, None)
+    {
         outcomes.push(("logo_ultra", svg, report));
     }
-    if let Ok((svg, report)) = vectorize_logo_premium(input_path, LogoQualityPreset::Clean, None) {
+    if let Ok((svg, report)) =
+        vectorize_logo_premium_image(original, LogoQualityPreset::Clean, None)
+    {
         outcomes.push(("logo_clean", svg, report));
     }
-    if let Ok((svg, report)) = vectorize_premium(input_path, 0.95, Some(32)) {
+    if let Ok((svg, report)) = vectorize_premium_image(original, 0.95, Some(32)) {
         outcomes.push(("premium_photo", svg, report));
     }
-    if let Ok((svg, report)) = vectorize_smart(input_path, 0.95, 100_000, 4) {
+    if let Ok((svg, report)) = vectorize_smart_image(original, 0.95, 100_000, 4) {
         outcomes.push(("smart", svg, report));
     }
 
@@ -133,20 +149,28 @@ pub fn vectorize_logo_premium(
 ) -> Result<(String, VectorizationReport)> {
     let original = image::open(input_path)
         .with_context(|| format!("unable to open image {}", input_path.display()))?;
+    vectorize_logo_premium_image(&original, quality, n_colors)
+}
+
+pub fn vectorize_logo_premium_image(
+    original: &DynamicImage,
+    quality: LogoQualityPreset,
+    n_colors: Option<usize>,
+) -> Result<(String, VectorizationReport)> {
     let (mono, color) = is_monochrome_icon_rgba(&original.to_rgba8());
     if mono {
         if let Some(color) = color {
-            return process_geometric_icon(&original, color, quality);
+            return process_geometric_icon(original, color, quality);
         }
     }
 
-    let analysis = analyze_image(&original);
-    let palette_override = n_colors.or_else(|| match analysis.image_type {
+    let analysis = analyze_image(original);
+    let palette_override = n_colors.or(match analysis.image_type {
         ImageKind::Logo => Some(8),
         ImageKind::Icon => Some(12),
         _ => None,
     });
-    let mut candidate = preprocess_image(&original, &analysis, palette_override)?;
+    let mut candidate = preprocess_image(original, &analysis, palette_override)?;
     candidate = DynamicImage::ImageRgba8(candidate)
         .unsharpen(1.0, 1)
         .to_rgba8();
@@ -155,7 +179,7 @@ pub fn vectorize_logo_premium(
     let svg = trace_to_svg(&candidate, &settings)?;
     let svg = snap_svg_colors(&svg);
     let svg = optimize_svg(&svg, settings.optimizer_precision);
-    let metrics = compute_metrics(&original, &svg)?;
+    let metrics = compute_metrics(original, &svg)?;
     Ok((
         svg,
         VectorizationReport {
@@ -174,7 +198,15 @@ pub fn vectorize_premium(
 ) -> Result<(String, VectorizationReport)> {
     let original = image::open(input_path)
         .with_context(|| format!("unable to open image {}", input_path.display()))?;
-    let analysis = analyze_image(&original);
+    vectorize_premium_image(&original, target_ssim, n_colors)
+}
+
+pub fn vectorize_premium_image(
+    original: &DynamicImage,
+    target_ssim: f64,
+    n_colors: Option<usize>,
+) -> Result<(String, VectorizationReport)> {
+    let analysis = analyze_image(original);
     if matches!(analysis.image_type, ImageKind::Logo | ImageKind::Icon)
         && analysis.unique_colors <= 256
     {
@@ -183,9 +215,9 @@ pub fn vectorize_premium(
         } else {
             LogoQualityPreset::Balanced
         };
-        return vectorize_logo_premium(input_path, quality, n_colors);
+        return vectorize_logo_premium_image(original, quality, n_colors);
     }
-    let mut candidate = prepare_premium_candidate(&original, &analysis, n_colors, target_ssim);
+    let mut candidate = prepare_premium_candidate(original, &analysis, n_colors, target_ssim);
 
     let ladder = if target_ssim >= 0.98 {
         vec![QualityPreset::Quality, QualityPreset::Ultra]
@@ -199,7 +231,7 @@ pub fn vectorize_premium(
         let svg = trace_to_svg(&candidate, &settings)?;
         let svg = snap_svg_colors(&svg);
         let svg = optimize_svg(&svg, settings.optimizer_precision);
-        let metrics = compute_metrics(&original, &svg)?;
+        let metrics = compute_metrics(original, &svg)?;
         let score =
             metrics.ssim * 0.6 + metrics.ssim_perceptual * 0.2 + metrics.edge_similarity * 0.2;
         let report = VectorizationReport {
@@ -232,8 +264,12 @@ pub fn vectorize_premium(
 pub fn vectorize_optimal(input_path: &Path) -> Result<(String, VectorizationReport)> {
     let original = image::open(input_path)
         .with_context(|| format!("unable to open image {}", input_path.display()))?;
-    let analysis = analyze_image(&original);
-    let mut candidate = preprocess_image(&original, &analysis, None)?;
+    vectorize_optimal_image(&original)
+}
+
+pub fn vectorize_optimal_image(original: &DynamicImage) -> Result<(String, VectorizationReport)> {
+    let analysis = analyze_image(original);
+    let mut candidate = preprocess_image(original, &analysis, None)?;
     candidate = DynamicImage::ImageRgba8(candidate).blur(0.4).to_rgba8();
     candidate = DynamicImage::ImageRgba8(candidate)
         .unsharpen(1.0, 1)
@@ -243,7 +279,7 @@ pub fn vectorize_optimal(input_path: &Path) -> Result<(String, VectorizationRepo
     let svg = trace_to_svg(&candidate, &settings)?;
     let svg = snap_svg_colors(&svg);
     let svg = optimize_svg(&svg, settings.optimizer_precision);
-    let metrics = compute_metrics(&original, &svg)?;
+    let metrics = compute_metrics(original, &svg)?;
 
     Ok((
         svg,
@@ -264,8 +300,17 @@ pub fn vectorize_smart(
 ) -> Result<(String, VectorizationReport)> {
     let original = image::open(input_path)
         .with_context(|| format!("unable to open image {}", input_path.display()))?;
-    let analysis = analyze_image(&original);
-    let mut candidate = preprocess_image(&original, &analysis, None)?;
+    vectorize_smart_image(&original, target_ssim, max_file_size, max_iterations)
+}
+
+pub fn vectorize_smart_image(
+    original: &DynamicImage,
+    target_ssim: f64,
+    max_file_size: usize,
+    max_iterations: usize,
+) -> Result<(String, VectorizationReport)> {
+    let analysis = analyze_image(original);
+    let mut candidate = preprocess_image(original, &analysis, None)?;
     let ladder = [
         QualityPreset::Figma,
         QualityPreset::Balanced,
@@ -281,7 +326,7 @@ pub fn vectorize_smart(
             svg = snap_svg_colors(&svg);
         }
         let svg = optimize_svg(&svg, settings.optimizer_precision);
-        let metrics = compute_metrics(&original, &svg)?;
+        let metrics = compute_metrics(original, &svg)?;
         let report = VectorizationReport {
             analysis: analysis.clone(),
             settings,
@@ -314,7 +359,7 @@ pub fn vectorize_smart(
 
 fn process_geometric_icon(
     original: &DynamicImage,
-    color: (u8, u8, u8),
+    color: RgbColor,
     quality: LogoQualityPreset,
 ) -> Result<(String, VectorizationReport)> {
     let inverted = invert_icon_to_black_white(original);
@@ -348,7 +393,7 @@ fn invert_icon_to_black_white(original: &DynamicImage) -> RgbaImage {
     output
 }
 
-fn recolor_icon_svg(svg: &str, color: (u8, u8, u8)) -> String {
+fn recolor_icon_svg(svg: &str, color: RgbColor) -> String {
     let target_color = format!("#{:02x}{:02x}{:02x}", color.0, color.1, color.2);
     let black_path_re =
         Regex::new(r#"(?m)^.*fill="(?:#000000|#000|black)".*\n?"#).expect("valid black path regex");
@@ -421,10 +466,11 @@ fn parse_hex_color(color: &str) -> Option<(u8, u8, u8)> {
             let s = [c, c].iter().collect::<String>();
             u8::from_str_radix(&s, 16).ok()
         };
+        let mut chars = value.chars();
         Some((
-            expand(value.chars().nth(0)?)?,
-            expand(value.chars().nth(1)?)?,
-            expand(value.chars().nth(2)?)?,
+            expand(chars.next()?)?,
+            expand(chars.next()?)?,
+            expand(chars.next()?)?,
         ))
     } else if value.len() == 6 {
         Some((

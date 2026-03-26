@@ -1,3 +1,16 @@
+[workspace]
+resolver = "2"
+members = [".", "crates/edgesvg-python", "crates/edgesvg-node", "crates/edgesvg-wasm"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+homepage = "https://github.com/raphaelmansuy/edgesvg"
+repository = "https://github.com/raphaelmansuy/edgesvg"
+documentation = "https://docs.rs/edgesvg"
+
 [package]
 name = "edgesvg"
 version = "0.2.0"

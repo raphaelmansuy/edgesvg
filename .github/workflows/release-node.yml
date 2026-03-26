@@ -1,0 +1,107 @@
+name: Release Node
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Tag to publish, for example v0.2.0
+        required: false
+
+jobs:
+  build-native:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            node_platform: linux-x64-gnu
+            artifact: libedgesvg_node.so
+            output: edgesvg-node.linux-x64-gnu.node
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            node_platform: linux-arm64-gnu
+            artifact: libedgesvg_node.so
+            output: edgesvg-node.linux-arm64-gnu.node
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            node_platform: darwin-x64
+            artifact: libedgesvg_node.dylib
+            output: edgesvg-node.darwin-x64.node
+          - target: aarch64-apple-darwin
+            runner: macos-14
+            node_platform: darwin-arm64
+            artifact: libedgesvg_node.dylib
+            output: edgesvg-node.darwin-arm64.node
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            node_platform: win32-x64-msvc
+            artifact: edgesvg_node.dll
+            output: edgesvg-node.win32-x64-msvc.node
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --release --target ${{ matrix.target }} -p edgesvg-node
+      - shell: bash
+        run: |
+          mkdir -p "sdks/node/npm/${{ matrix.node_platform }}"
+          cp "target/${{ matrix.target }}/release/${{ matrix.artifact }}" \
+             "sdks/node/npm/${{ matrix.node_platform }}/${{ matrix.output }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: node-${{ matrix.node_platform }}
+          path: sdks/node/npm/${{ matrix.node_platform }}/
+
+  publish:
+    needs: build-native
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+      - uses: actions/download-artifact@v4
+        with:
+          path: sdks/node/npm
+          merge-multiple: true
+      - name: Sync versions
+        env:
+          INPUT_TAG_NAME: ${{ inputs.tag_name }}
+        run: |
+          node -e "
+          const fs = require('fs');
+          const ref = process.env.INPUT_TAG_NAME || process.env.GITHUB_REF_NAME;
+          const version = ref.replace(/^v/, '');
+          const dirs = ['sdks/node', ...fs.readdirSync('sdks/node/npm').map(d => `sdks/node/npm/${d}`)];
+          for (const dir of dirs) {
+            const file = `${dir}/package.json`;
+            const pkg = JSON.parse(fs.readFileSync(file, 'utf8'));
+            pkg.version = version;
+            for (const key of Object.keys(pkg.optionalDependencies || {})) {
+              pkg.optionalDependencies[key] = version;
+            }
+            fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + '\n');
+          }"
+      - run: |
+          cd sdks/node
+          npm ci
+          npm run build:ts
+      - run: |
+          for dir in sdks/node/npm/*/; do
+            (cd "$dir" && npm publish --access public)
+          done
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - run: |
+          cd sdks/node
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

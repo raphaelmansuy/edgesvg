@@ -1,43 +1,55 @@
 # Algorithm
 
-EdgeSVG uses a deliberately pragmatic pipeline that mirrors the Python `vectalab` conversion logic where it can be implemented natively in Rust.
+EdgeSVG is a scored search pipeline, not a single tracing pass.
 
-## Conversion Flow
+## Pipeline
 
-1. Load the raster source.
-2. Compute image heuristics:
-   - unique color count
-   - top color coverage
-   - color variance
-   - edge density
-3. Classify the image as one of:
-   - logo
-   - icon
-   - illustration
-   - photo
-4. Choose preprocessing and tracing settings from that class.
-5. Reduce palette complexity and apply light denoising where it helps.
-6. Trace with the internal Rust vectorizer derived from `visioncortex` primitives.
-7. Minify SVG path data without collapsing document structure.
-8. Render the SVG back to pixels and compute quality metrics.
-9. Keep the best candidate under the configured fidelity and file size constraints.
+1. Decode the raster input.
+2. Flatten transparency for analysis while preserving alpha-aware tracing where useful.
+3. Measure image width, height, color coverage, variance, edge density, and dominant colors.
+4. Classify the input as `logo`, `icon`, `illustration`, or `photo`.
+5. Choose preprocessing and tracing presets from that classification.
+6. Trace candidate SVGs through one or more quality presets.
+7. Optimize SVG coordinate precision and styling noise.
+8. Render the SVG back to raster.
+9. Score the SVG against the original raster.
+10. Return the first candidate that hits the target, or the highest-scoring fallback.
 
-## Why This Shape
+## Metrics
 
-The project does not try to be magical. It tries to be auditable:
+The `QualityMetrics` report includes:
 
-- every stage is native Rust
-- the output can be rendered and checked locally
-- candidate selection is metric-driven
-- the heuristics are intentionally readable in source
+- `ssim`
+- `ssim_perceptual`
+- `edge_similarity`
+- `edge_precision`
+- `edge_recall`
+- `edge_f1`
+- `foreground_iou`
+- `color_similarity`
+- `fidelity_score`
+- `delta_e`
+- `topology_score`
+- `psnr`
+- `mae`
+- `file_size`
+- `path_count`
 
-## Core Modules
+## Mode Selection
 
-- `src/analysis.rs`
-- `src/preprocess.rs`
-- `src/pipeline.rs`
-- `src/highlevel.rs`
-- `src/vectorizer.rs`
-- `src/svg.rs`
-- `src/metrics.rs`
-- `src/benchmark.rs`
+`auto` and the SDK `decision` field are driven by:
+
+- monochrome transparent icon detection
+- image kind classification
+- unique-color count
+- top-color coverage
+
+Small clean logos tend to route to the logo path. Richer images tend to route to the premium path.
+
+## Why the SDK Contract Matters
+
+All wrappers call the same `VectorizeRequest` and `VectorizeResponse` layer. That means:
+
+- the CLI and SDKs agree on methods and defaults
+- release packaging can stay thin
+- regression tests target one contract instead of four divergent ones

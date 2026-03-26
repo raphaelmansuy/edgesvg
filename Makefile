@@ -10,12 +10,16 @@ OODA_LOOPS := 10
 
 .DEFAULT_GOAL := help
 
-.PHONY: help fmt test build verify bench bench-smoke bench-sample bench-full optimize-frontier optimize-ooda clean-bench
+.PHONY: help fmt test build verify verify-all python-sdk node-sdk wasm-sdk bench bench-smoke bench-sample bench-full optimize-frontier optimize-ooda clean-bench
 
 help:
 	@printf "\nEdgeSVG Workflow\n\n"
 	@printf "  %-20s %s\n" "make verify" "fmt + test"
+	@printf "  %-20s %s\n" "make verify-all" "Rust + Python + Node + WASM checks"
 	@printf "  %-20s %s\n" "make build" "Build release binary"
+	@printf "  %-20s %s\n" "make python-sdk" "Build and test the Python package"
+	@printf "  %-20s %s\n" "make node-sdk" "Build and test the Node.js package"
+	@printf "  %-20s %s\n" "make wasm-sdk" "Check the WASM crate"
 	@printf "  %-20s %s\n" "make bench" "Alias for make bench-sample"
 	@printf "  %-20s %s\n" "make bench-smoke" "Fast 12-asset golden benchmark"
 	@printf "  %-20s %s\n" "make bench-sample" "Main 90-asset benchmark with diff"
@@ -31,8 +35,19 @@ test:
 
 verify: fmt test
 
+verify-all: verify python-sdk node-sdk wasm-sdk
+
 build:
 	$(CARGO) build --release
+
+python-sdk:
+	cd sdks/python && maturin develop && pytest -q
+
+node-sdk:
+	cd sdks/node && npm ci && npm run build && npm test
+
+wasm-sdk:
+	$(CARGO) check -p edgesvg-wasm --target wasm32-unknown-unknown
 
 bench: bench-sample
 

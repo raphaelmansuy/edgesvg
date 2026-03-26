@@ -2,9 +2,10 @@ use std::path::Path;
 
 use edgesvg::{
     analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics,
-    determine_auto_mode, optimize_svg, preprocess_image, quantize_image, vectorize, vectorize_auto,
-    vectorize_logo_premium, vectorize_optimal, vectorize_premium, vectorize_smart, AutoMode,
-    LogoQualityPreset, QualityPreset, VectorizeOptions,
+    determine_auto_mode, optimize, preprocess_image, quantize_image, render_png, vectorize,
+    vectorize_auto, vectorize_logo_premium, vectorize_optimal, vectorize_path, vectorize_premium,
+    vectorize_smart, AutoMode, LogoQualityPreset, QualityPreset, VectorizeMethod, VectorizeOptions,
+    VectorizeRequest,
 };
 use image::{DynamicImage, Rgba, RgbaImage};
 use tempfile::tempdir;
@@ -160,5 +161,30 @@ fn higher_level_api_handles_logo_premium_and_auto_modes() {
 
 #[test]
 fn svg_optimizer_keeps_invalid_input_unchanged() {
-    assert_eq!(optimize_svg("not valid svg", 1), "not valid svg");
+    assert_eq!(edgesvg::optimize_svg("not valid svg", 1), "not valid svg");
+}
+
+#[test]
+fn stable_sdk_contract_handles_path_and_serializable_outputs() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("input.png");
+    sample_image().save(&input).unwrap();
+
+    let response = vectorize_path(
+        &input,
+        &VectorizeRequest {
+            method: VectorizeMethod::Auto,
+            ..VectorizeRequest::default()
+        },
+    )
+    .unwrap();
+
+    assert!(response.svg.contains("<svg"));
+    assert!(response.report.metrics.ssim >= 0.0);
+
+    let optimized = optimize(&response.svg, 2);
+    assert!(optimized.optimized_svg.contains("<svg"));
+
+    let png = render_png(&response.svg, 96, 96).unwrap();
+    assert!(png.starts_with(b"\x89PNG"));
 }

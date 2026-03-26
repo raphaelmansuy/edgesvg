@@ -1,0 +1,9 @@
+{
+  "name": "edgesvg-linux-x64-gnu",
+  "version": "0.2.0",
+  "main": "edgesvg-node.linux-x64-gnu.node",
+  "files": ["*.node"],
+  "os": ["linux"],
+  "cpu": ["x64"],
+  "license": "MIT"
+}

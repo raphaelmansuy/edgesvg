@@ -1,0 +1,57 @@
+{
+  "name": "edgesvg",
+  "version": "0.2.0",
+  "description": "Native Rust raster-to-SVG vectorization for Node.js",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist/",
+    "native/",
+    "npm/",
+    "README.md"
+  ],
+  "optionalDependencies": {
+    "edgesvg-darwin-arm64": "0.2.0",
+    "edgesvg-darwin-x64": "0.2.0",
+    "edgesvg-linux-arm64-gnu": "0.2.0",
+    "edgesvg-linux-x64-gnu": "0.2.0",
+    "edgesvg-win32-x64-msvc": "0.2.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/raphaelmansuy/edgesvg#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raphaelmansuy/edgesvg.git",
+    "directory": "sdks/node"
+  },
+  "keywords": [
+    "svg",
+    "vectorization",
+    "graphics",
+    "rust",
+    "image"
+  ],
+  "scripts": {
+    "build:native": "cargo build --manifest-path ../../crates/edgesvg-node/Cargo.toml --release && node scripts/prepare-native.mjs",
+    "build:ts": "tsup src/index.ts --format cjs,esm --dts",
+    "build": "npm run build:native && npm run build:ts",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

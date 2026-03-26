@@ -1,0 +1,25 @@
+[package]
+name = "edgesvg-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "EdgeSVG WebAssembly bindings"
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+edgesvg = { path = "../.." }
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+serde = { version = "1.0", features = ["derive"] }
+console_error_panic_hook = "0.1"
+console_log = { version = "1", features = ["color"] }
+log = "0.4"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"

@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Context, Result};
 use image::{DynamicImage, Pixel, Rgba, RgbaImage};
 use resvg::{tiny_skia, usvg};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QualityMetrics {
     pub ssim: f64,
     pub ssim_perceptual: f64,
@@ -97,7 +97,7 @@ pub fn compute_metrics(original: &DynamicImage, svg: &str) -> Result<QualityMetr
         topology_score,
         psnr,
         mae,
-        file_size: svg.as_bytes().len(),
+        file_size: svg.len(),
         path_count: svg.matches("<path").count(),
     })
 }

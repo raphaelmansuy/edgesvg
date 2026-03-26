@@ -1,29 +1,15 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use edgesvg::metrics::render_svg_file_to_png;
 use edgesvg::{
     analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics,
     determine_auto_mode, vectorize, vectorize_auto, vectorize_logo_premium, vectorize_optimal,
     vectorize_premium, vectorize_smart, write_svg, LogoQualityPreset, QualityPreset,
-    VectorizeOptions,
+    VectorizeMethod, VectorizeOptions,
 };
-use serde::Serialize;
 use serde_json::json;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, ValueEnum)]
-#[serde(rename_all = "snake_case")]
-enum ConvertMethod {
-    Hifi,
-    Logo,
-    Premium,
-    Auto,
-    Smart,
-    Optimal,
-    Bayesian,
-    Sam,
-}
 
 fn logo_quality_from_quality(quality: QualityPreset) -> LogoQualityPreset {
     match quality {
@@ -110,9 +96,9 @@ fn print_info(input: &PathBuf, json_output: bool) -> Result<()> {
         _ => "unknown",
     };
     let recommended_method = if analysis.width.max(analysis.height) <= 512 {
-        ConvertMethod::Hifi
+        VectorizeMethod::Hifi
     } else {
-        ConvertMethod::Premium
+        VectorizeMethod::Premium
     };
     let recommended_quality = if analysis.width.max(analysis.height) <= 512 {
         QualityPreset::Ultra
@@ -189,8 +175,8 @@ enum Commands {
         max_iterations: usize,
         #[arg(long, value_enum, default_value_t = QualityPreset::Ultra)]
         quality: QualityPreset,
-        #[arg(long, short = 'm', value_enum, default_value_t = ConvertMethod::Hifi)]
-        method: ConvertMethod,
+        #[arg(long, short = 'm', value_enum, default_value_t = VectorizeMethod::Hifi)]
+        method: VectorizeMethod,
         #[arg(long)]
         colors: Option<usize>,
         #[arg(long)]
@@ -319,7 +305,7 @@ fn main() -> Result<()> {
         } => {
             let output = output.unwrap_or_else(|| input.with_extension("svg"));
             let (svg, report, fallback_from) = match method {
-                ConvertMethod::Hifi => {
+                VectorizeMethod::Hifi => {
                     let options = VectorizeOptions {
                         target_ssim,
                         max_file_size,
@@ -329,29 +315,29 @@ fn main() -> Result<()> {
                     let (svg, report) = vectorize(&input, &options)?;
                     (svg, report, None)
                 }
-                ConvertMethod::Smart => {
+                VectorizeMethod::Smart => {
                     let (svg, report) =
                         vectorize_smart(&input, target_ssim, max_file_size, max_iterations)?;
                     (svg, report, None)
                 }
-                ConvertMethod::Logo => {
+                VectorizeMethod::Logo => {
                     let (svg, report) =
                         vectorize_logo_premium(&input, logo_quality_from_quality(quality), colors)?;
                     (svg, report, None)
                 }
-                ConvertMethod::Premium => {
+                VectorizeMethod::Premium => {
                     let (svg, report) = vectorize_premium(&input, target_ssim, colors)?;
                     (svg, report, None)
                 }
-                ConvertMethod::Optimal => {
+                VectorizeMethod::Optimal => {
                     let (svg, report) = vectorize_optimal(&input)?;
                     (svg, report, None)
                 }
-                ConvertMethod::Auto => {
+                VectorizeMethod::Auto => {
                     let (svg, report) = vectorize_auto(&input)?;
                     (svg, report, None)
                 }
-                ConvertMethod::Bayesian => {
+                VectorizeMethod::Bayesian => {
                     let (svg, report) = vectorize_smart(
                         &input,
                         target_ssim.max(0.95),
@@ -360,7 +346,7 @@ fn main() -> Result<()> {
                     )?;
                     (svg, report, None)
                 }
-                ConvertMethod::Sam => {
+                VectorizeMethod::Sam => {
                     let (svg, report) = vectorize_auto(&input)?;
                     (svg, report, Some(method))
                 }

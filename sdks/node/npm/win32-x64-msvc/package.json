@@ -1,0 +1,9 @@
+{
+  "name": "edgesvg-win32-x64-msvc",
+  "version": "0.2.0",
+  "main": "edgesvg-node.win32-x64-msvc.node",
+  "files": ["*.node"],
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "license": "MIT"
+}

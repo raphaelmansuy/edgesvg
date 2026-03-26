@@ -1,41 +1,61 @@
 # CI And Publishing
 
-EdgeSVG is structured as a standard publishable Rust crate.
+## CI Matrix
 
-## Local Verification
+GitHub Actions validates four surfaces:
 
-Run the same checks you should expect in CI:
+| Workflow job | What it checks |
+|---|---|
+| `rust` | `cargo fmt`, `cargo clippy`, `cargo test` |
+| `python` | `maturin develop` and `pytest` |
+| `node` | `npm ci`, native addon build, TypeScript build, Vitest |
+| `wasm` | `cargo check -p edgesvg-wasm --target wasm32-unknown-unknown` |
+
+## Release Workflows
+
+### Rust
+
+`.github/workflows/release-rust.yml`
+
+- triggers on `v*.*.*` tags
+- runs `cargo publish`
+
+### Python
+
+`.github/workflows/release-python.yml`
+
+- builds wheels on Linux, macOS, and Windows
+- publishes to PyPI with `twine`
+
+### Node.js
+
+`.github/workflows/release-node.yml`
+
+- builds platform-specific `.node` binaries
+- publishes per-platform npm packages
+- publishes the main `edgesvg` wrapper package
+
+### WASM
+
+`.github/workflows/release-wasm.yml`
+
+- runs `wasm-pack build`
+- uploads the generated package artifact
+
+## Local Reproduction
 
 ```bash
-cargo fmt --check
-cargo test
+make verify
+make python-sdk
+make node-sdk
+make wasm-sdk
+make verify-all
 ```
 
-For release validation:
+## Required Secrets
 
-```bash
-cargo build --release
-cargo run --release -- benchmark --input-dir examples --output-dir benchmark_runs/latest
-```
-
-## Publishing To crates.io
-
-Dry run first:
-
-```bash
-cargo publish --dry-run
-```
-
-Publish:
-
-```bash
-cargo publish
-```
-
-## Release Discipline
-
-- bump `version` in `Cargo.toml`
-- keep `Cargo.lock` committed
-- run tests before tagging
-- include benchmark notes when vectorization logic changes
-- tag releases consistently, for example `v0.2.1`
+| Secret | Used by |
+|---|---|
+| `CARGO_REGISTRY_TOKEN` | crates.io publish |
+| `PYPI_API_TOKEN` | PyPI publish |
+| `NPM_TOKEN` | npm publish |

@@ -2,6 +2,7 @@ use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 use image::{Rgba, RgbaImage};
+use serde::{Deserialize, Serialize};
 
 use crate::analysis::analyze_image;
 use crate::metrics::compute_metrics;
@@ -10,7 +11,7 @@ use crate::svg::optimize_svg;
 use crate::types::{Complexity, ImageAnalysis, ImageKind, QualityPreset, VectorizationReport};
 use crate::vectorizer::trace_to_svg;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VectorizeOptions {
     pub target_ssim: f64,
     pub max_file_size: usize,
@@ -35,6 +36,13 @@ pub fn vectorize(
 ) -> Result<(String, VectorizationReport)> {
     let original = image::open(input_path)
         .with_context(|| format!("unable to open image {}", input_path.display()))?;
+    vectorize_image(&original, options)
+}
+
+pub fn vectorize_image(
+    original: &image::DynamicImage,
+    options: &VectorizeOptions,
+) -> Result<(String, VectorizationReport)> {
     let source_image = image::DynamicImage::ImageRgba8(original.to_rgba8());
     let flattened = flatten_transparency_to_white(&source_image.to_rgba8());
     let flattened_image = image::DynamicImage::ImageRgba8(flattened);
@@ -51,7 +59,7 @@ pub fn vectorize(
         let settings = adaptive_trace_settings(&analysis, quality);
         let svg = trace_image(&trace_input, &settings)?;
         let svg = optimize_svg(&svg, settings.optimizer_precision);
-        let metrics = compute_metrics(&original, &svg)?;
+        let metrics = compute_metrics(original, &svg)?;
         let report = VectorizationReport {
             analysis: analysis.clone(),
             settings,

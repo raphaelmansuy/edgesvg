@@ -1,96 +1,91 @@
 # Rust API
 
-EdgeSVG is a library first and a CLI second. The public API is intentionally compact.
+## Two Layers
 
-## Main Entry Points
+EdgeSVG exposes:
 
-### `vectorize`
+1. The original Rust-native functions such as `vectorize`, `vectorize_auto`, and `benchmark_directory`
+2. A stable SDK-facing contract in `src/sdk.rs` used by Python, Node.js, and WASM
 
-Convert one raster input into an SVG string plus a structured report.
+## Core Functions
 
 ```rust
 use std::path::Path;
 use edgesvg::{vectorize, VectorizeOptions};
 
-let (svg, report) = vectorize(Path::new("examples/test_logo_benchmark.png"), &VectorizeOptions::default())?;
-println!("ssim={:.4}", report.metrics.ssim);
+let (svg, report) = vectorize(
+    Path::new("examples/test_logo_benchmark.png"),
+    &VectorizeOptions::default(),
+)?;
 # Ok::<(), anyhow::Error>(())
 ```
 
-### `VectorizeOptions`
+Other core exports:
 
-Tune the conversion loop.
+- `analyze_image`
+- `vectorize_logo_premium`
+- `vectorize_premium`
+- `vectorize_auto`
+- `vectorize_smart`
+- `vectorize_optimal`
+- `compute_metrics`
+- `render_svg_to_image`
+- `benchmark_directory`
+- `benchmark_golden_data`
+
+## Stable SDK Contract
+
+### Request
 
 ```rust
-use edgesvg::{QualityPreset, VectorizeOptions};
+use edgesvg::{VectorizeMethod, VectorizeRequest};
 
-let options = VectorizeOptions {
-    target_ssim: 0.95,
-    max_file_size: 150_000,
+let request = VectorizeRequest {
+    method: VectorizeMethod::Auto,
+    target_ssim: 0.998,
+    max_file_size: 100_000,
     max_iterations: 4,
-    quality: Some(QualityPreset::Balanced),
+    quality: edgesvg::QualityPreset::Ultra,
+    logo_quality: None,
+    colors: None,
 };
 ```
 
-### `write_svg`
+### Response
 
-Persist generated SVG content to disk.
+`vectorize_path` and `vectorize_bytes` return:
 
-```rust
-use std::path::Path;
-use edgesvg::write_svg;
+- `svg`
+- `report`
+- `requested_method`
+- `effective_method`
+- `fallback_from`
+- `decision`
 
-write_svg(Path::new("out.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>")?;
-# Ok::<(), anyhow::Error>(())
-```
+### Functions
 
-### `analyze_image`
+| Function | Input | Output |
+|---|---|---|
+| `vectorize_path` | file path + `VectorizeRequest` | `VectorizeResponse` |
+| `vectorize_bytes` | raster bytes + `VectorizeRequest` | `VectorizeResponse` |
+| `analyze_path` / `analyze_bytes` | raster | `AnalyzeResponse` |
+| `inspect_path` | file path | `InfoResponse` |
+| `compare_path` / `compare_bytes` | raster + SVG | `QualityMetrics` |
+| `optimize` | SVG string | `OptimizeResponse` |
+| `render_png` | SVG + width + height | PNG bytes |
+| `benchmark` | directory paths + `BenchmarkRequest` | `BenchmarkReport` |
+| `benchmark_golden` | golden corpus + work dir | `BenchmarkReport` |
 
-Inspect an image before conversion.
+## In-Memory APIs
 
-```rust
-let image = image::open("examples/test_logo_benchmark.png")?;
-let analysis = edgesvg::analyze_image(&image);
-println!("{:?}", analysis.image_type);
-# Ok::<(), anyhow::Error>(())
-```
+WASM support required true in-memory conversion, so the Rust crate now also exposes:
 
-### `compute_metrics`
+- `vectorize_image`
+- `determine_auto_mode_image`
+- `vectorize_auto_image`
+- `vectorize_logo_premium_image`
+- `vectorize_premium_image`
+- `vectorize_smart_image`
+- `vectorize_optimal_image`
 
-Score an SVG against a raster source.
-
-```rust
-let image = image::open("examples/test_logo_benchmark.png")?;
-let svg = std::fs::read_to_string("demo/output.svg")?;
-let metrics = edgesvg::compute_metrics(&image, &svg)?;
-println!("paths={}", metrics.path_count);
-# Ok::<(), anyhow::Error>(())
-```
-
-### `benchmark_directory`
-
-Batch-process a directory and collect a report.
-
-```rust
-use std::path::Path;
-use edgesvg::{benchmark_directory, VectorizeOptions};
-
-let report = benchmark_directory(
-    Path::new("examples"),
-    Path::new("benchmark_runs/latest"),
-    &VectorizeOptions::default(),
-)?;
-println!("entries={}", report.entries.len());
-# Ok::<(), anyhow::Error>(())
-```
-
-## Data Types
-
-- `ImageAnalysis`: image dimensions, dominant colors, type, complexity, and heuristics
-- `QualityMetrics`: `ssim`, `psnr`, `mae`, file size, and path count
-- `VectorizationReport`: analysis, chosen trace settings, preset, and final metrics
-- `BenchmarkReport`: per-file entries plus aggregate averages
-
-## Stability
-
-The crate is still early, but the goal is to keep the public API narrow so it can stabilize quickly.
+These are the right entrypoints for server-side pipelines that already decoded image data.

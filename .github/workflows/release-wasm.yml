@@ -1,0 +1,22 @@
+name: Release WASM
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install wasm-pack --locked
+      - run: wasm-pack build crates/edgesvg-wasm --target bundler --out-dir pkg --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: edgesvg-wasm-pkg
+          path: crates/edgesvg-wasm/pkg/

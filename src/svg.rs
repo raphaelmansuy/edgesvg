@@ -203,11 +203,7 @@ fn merge_same_style_paths(svg: &str) -> String {
                         combined.join(" ")
                     })
                     .unwrap_or(d);
-                output.push_str(
-                    &d_re
-                        .replace(&raw, format!(r#" d="{}""#, merged_d))
-                        .into_owned(),
-                );
+                output.push_str(&d_re.replace(&raw, format!(r#" d="{}""#, merged_d)));
             }
         }
     }
