@@ -75,7 +75,10 @@ fn benchmark_runner_produces_entries_and_markdown() {
     let report =
         benchmark_directory(&input_dir, &output_dir, &VectorizeOptions::default()).unwrap();
     assert_eq!(report.entries.len(), 1);
+    assert_eq!(report.groups.len(), 1);
+    assert!(report.average_elapsed_ms >= 0.0);
     assert!(report.to_markdown().contains("Benchmark Report"));
+    assert!(report.to_markdown().contains("By Group"));
 }
 
 #[test]
@@ -104,6 +107,8 @@ fn golden_benchmark_rasterizes_reference_svgs() {
     .unwrap();
 
     assert_eq!(report.entries.len(), 1);
+    assert_eq!(report.entries[0].group, "sample.svg");
+    assert_eq!(report.entries[0].reference.as_deref(), Some("sample.svg"));
     assert!(work_dir.join("rendered_inputs/sample.png").exists());
     assert!(work_dir.join("vectorized/sample.svg").exists());
 }

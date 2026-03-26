@@ -573,11 +573,17 @@ fn main() -> Result<()> {
                 "{}",
                 serde_json::to_string_pretty(&json!({
                     "entries": report.entries.len(),
+                    "groups": report.groups,
                     "average_ssim": report.average_ssim,
                     "average_psnr": report.average_psnr,
                     "average_mae": report.average_mae,
                     "average_file_size": report.average_file_size,
-                    "average_path_count": report.average_path_count
+                    "average_path_count": report.average_path_count,
+                    "average_edge_similarity": report.average_edge_similarity,
+                    "average_topology_score": report.average_topology_score,
+                    "average_elapsed_ms": report.average_elapsed_ms,
+                    "total_elapsed_ms": report.total_elapsed_ms,
+                    "throughput_images_per_sec": report.throughput_images_per_sec
                 }))?
             );
         }
@@ -615,11 +621,17 @@ fn main() -> Result<()> {
                 "{}",
                 serde_json::to_string_pretty(&json!({
                     "entries": report.entries.len(),
+                    "groups": report.groups,
                     "average_ssim": report.average_ssim,
                     "average_psnr": report.average_psnr,
                     "average_mae": report.average_mae,
                     "average_file_size": report.average_file_size,
-                    "average_path_count": report.average_path_count
+                    "average_path_count": report.average_path_count,
+                    "average_edge_similarity": report.average_edge_similarity,
+                    "average_topology_score": report.average_topology_score,
+                    "average_elapsed_ms": report.average_elapsed_ms,
+                    "total_elapsed_ms": report.total_elapsed_ms,
+                    "throughput_images_per_sec": report.throughput_images_per_sec
                 }))?
             );
         }

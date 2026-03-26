@@ -154,6 +154,27 @@ Run everything with:
 cargo test
 ```
 
+## Benchmark Workflow
+
+The benchmark harness is split into three levels:
+
+- `make bench-smoke` for fast correctness checks on a small golden slice
+- `make bench-sample` for the main 90-asset optimization loop with baseline diffing
+- `make bench-full` for a full golden-data verification run
+
+The generated reports now include:
+
+- overall quality metrics
+- per-group slices such as `icons`, `logos`, and `illustrations`
+- average conversion time and throughput
+- machine-readable JSON plus human-readable Markdown
+
+For bounded optimization sweeps, run:
+
+```bash
+make optimize-frontier
+```
+
 ## Repository Layout
 
 - `src/` core library and CLI

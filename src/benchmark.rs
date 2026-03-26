@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use anyhow::Result;
 use serde::Serialize;
@@ -12,17 +13,40 @@ use crate::types::VectorizationReport;
 pub struct BenchmarkEntry {
     pub input: String,
     pub output: String,
+    pub reference: Option<String>,
+    pub group: String,
+    pub elapsed_ms: u64,
     pub report: VectorizationReport,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct BenchmarkReport {
-    pub entries: Vec<BenchmarkEntry>,
+pub struct BenchmarkGroupSummary {
+    pub group: String,
+    pub entries: usize,
     pub average_ssim: f64,
     pub average_psnr: f64,
     pub average_mae: f64,
     pub average_file_size: f64,
     pub average_path_count: f64,
+    pub average_edge_similarity: f64,
+    pub average_topology_score: f64,
+    pub average_elapsed_ms: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BenchmarkReport {
+    pub entries: Vec<BenchmarkEntry>,
+    pub groups: Vec<BenchmarkGroupSummary>,
+    pub average_ssim: f64,
+    pub average_psnr: f64,
+    pub average_mae: f64,
+    pub average_file_size: f64,
+    pub average_path_count: f64,
+    pub average_edge_similarity: f64,
+    pub average_topology_score: f64,
+    pub average_elapsed_ms: f64,
+    pub total_elapsed_ms: u64,
+    pub throughput_images_per_sec: f64,
 }
 
 pub fn benchmark_directory(
@@ -39,11 +63,16 @@ pub fn benchmark_directory(
             .and_then(|s| s.to_str())
             .unwrap_or("output");
         let output = output_dir.join(format!("{stem}.svg"));
+        let started = Instant::now();
         let (svg, report) = vectorize(&input, options)?;
         write_svg(&output, &svg)?;
+        let elapsed_ms = started.elapsed().as_millis() as u64;
         entries.push(BenchmarkEntry {
             input: input.display().to_string(),
             output: output.display().to_string(),
+            reference: None,
+            group: benchmark_group(&input, input_dir),
+            elapsed_ms,
             report,
         });
     }
@@ -80,11 +109,16 @@ pub fn benchmark_golden_data(
         render_svg_file_to_png(&reference_svg, &raster_path)?;
 
         let output = output_dir.join(relative).with_extension("svg");
+        let started = Instant::now();
         let (svg, report) = vectorize(&raster_path, options)?;
         write_svg(&output, &svg)?;
+        let elapsed_ms = started.elapsed().as_millis() as u64;
         entries.push(BenchmarkEntry {
             input: raster_path.display().to_string(),
             output: output.display().to_string(),
+            reference: Some(relative.display().to_string()),
+            group: benchmark_group(relative, golden_dir),
+            elapsed_ms,
             report,
         });
     }
@@ -95,6 +129,44 @@ pub fn benchmark_golden_data(
 impl BenchmarkReport {
     pub fn to_markdown(&self) -> String {
         let mut out = String::from("# Benchmark Report\n\n");
+        let _ = std::fmt::Write::write_fmt(
+            &mut out,
+            format_args!(
+                "## Overall\n\n- Entries: {}\n- Average SSIM: {:.4}\n- Average PSNR: {:.2}\n- Average MAE: {:.2}\n- Average Edge Similarity: {:.4}\n- Average Topology Score: {:.4}\n- Average Size: {:.1} KB\n- Average Paths: {:.1}\n- Average Time: {:.1} ms\n- Throughput: {:.2} images/s\n\n",
+                self.entries.len(),
+                self.average_ssim,
+                self.average_psnr,
+                self.average_mae,
+                self.average_edge_similarity,
+                self.average_topology_score,
+                self.average_file_size / 1024.0,
+                self.average_path_count,
+                self.average_elapsed_ms,
+                self.throughput_images_per_sec
+            ),
+        );
+
+        out.push_str("## By Group\n\n");
+        out.push_str("| Group | Entries | SSIM | PSNR | MAE | Size (KB) | Paths | Time (ms) |\n");
+        out.push_str("|---|---:|---:|---:|---:|---:|---:|---:|\n");
+        for group in &self.groups {
+            let _ = std::fmt::Write::write_fmt(
+                &mut out,
+                format_args!(
+                    "| {} | {} | {:.4} | {:.2} | {:.2} | {:.1} | {:.1} | {:.1} |\n",
+                    group.group,
+                    group.entries,
+                    group.average_ssim,
+                    group.average_psnr,
+                    group.average_mae,
+                    group.average_file_size / 1024.0,
+                    group.average_path_count,
+                    group.average_elapsed_ms
+                ),
+            );
+        }
+
+        out.push_str("\n## Entries\n\n");
         out.push_str("| Input | SSIM | PSNR | MAE | Size (KB) | Paths | Preset |\n");
         out.push_str("|---|---:|---:|---:|---:|---:|---|\n");
         for entry in &self.entries {
@@ -116,18 +188,6 @@ impl BenchmarkReport {
                 ),
             );
         }
-
-        let _ = std::fmt::Write::write_fmt(
-            &mut out,
-            format_args!(
-                "\nAverage SSIM: {:.4}\n\nAverage PSNR: {:.2}\n\nAverage MAE: {:.2}\n\nAverage Size: {:.1} KB\n\nAverage Paths: {:.1}\n",
-                self.average_ssim,
-                self.average_psnr,
-                self.average_mae,
-                self.average_file_size / 1024.0,
-                self.average_path_count
-            ),
-        );
         out
     }
 }
@@ -147,15 +207,91 @@ fn summarize_entries(entries: Vec<BenchmarkEntry>) -> BenchmarkReport {
         .map(|e| e.report.metrics.path_count as f64)
         .sum::<f64>()
         / len;
+    let average_edge_similarity = entries
+        .iter()
+        .map(|e| e.report.metrics.edge_similarity)
+        .sum::<f64>()
+        / len;
+    let average_topology_score = entries
+        .iter()
+        .map(|e| e.report.metrics.topology_score)
+        .sum::<f64>()
+        / len;
+    let total_elapsed_ms = entries.iter().map(|e| e.elapsed_ms).sum::<u64>();
+    let average_elapsed_ms = total_elapsed_ms as f64 / len;
+    let throughput_images_per_sec = if total_elapsed_ms == 0 {
+        entries.len() as f64
+    } else {
+        entries.len() as f64 / (total_elapsed_ms as f64 / 1_000.0)
+    };
+    let groups = summarize_groups(&entries);
 
     BenchmarkReport {
         entries,
+        groups,
         average_ssim,
         average_psnr,
         average_mae,
         average_file_size,
         average_path_count,
+        average_edge_similarity,
+        average_topology_score,
+        average_elapsed_ms,
+        total_elapsed_ms,
+        throughput_images_per_sec,
     }
+}
+
+fn summarize_groups(entries: &[BenchmarkEntry]) -> Vec<BenchmarkGroupSummary> {
+    let mut groups = std::collections::BTreeMap::<String, Vec<&BenchmarkEntry>>::new();
+    for entry in entries {
+        groups.entry(entry.group.clone()).or_default().push(entry);
+    }
+
+    groups
+        .into_iter()
+        .map(|(group, entries)| {
+            let len = entries.len().max(1) as f64;
+            BenchmarkGroupSummary {
+                group,
+                entries: entries.len(),
+                average_ssim: entries.iter().map(|e| e.report.metrics.ssim).sum::<f64>() / len,
+                average_psnr: entries.iter().map(|e| e.report.metrics.psnr).sum::<f64>() / len,
+                average_mae: entries.iter().map(|e| e.report.metrics.mae).sum::<f64>() / len,
+                average_file_size: entries
+                    .iter()
+                    .map(|e| e.report.metrics.file_size as f64)
+                    .sum::<f64>()
+                    / len,
+                average_path_count: entries
+                    .iter()
+                    .map(|e| e.report.metrics.path_count as f64)
+                    .sum::<f64>()
+                    / len,
+                average_edge_similarity: entries
+                    .iter()
+                    .map(|e| e.report.metrics.edge_similarity)
+                    .sum::<f64>()
+                    / len,
+                average_topology_score: entries
+                    .iter()
+                    .map(|e| e.report.metrics.topology_score)
+                    .sum::<f64>()
+                    / len,
+                average_elapsed_ms: entries.iter().map(|e| e.elapsed_ms as f64).sum::<f64>() / len,
+            }
+        })
+        .collect()
+}
+
+fn benchmark_group(path: &Path, root: &Path) -> String {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    relative
+        .components()
+        .next()
+        .and_then(|component| component.as_os_str().to_str())
+        .unwrap_or("root")
+        .to_string()
 }
 
 fn raster_inputs(dir: &Path) -> Vec<PathBuf> {
