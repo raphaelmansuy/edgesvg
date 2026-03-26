@@ -27,6 +27,7 @@ sdks/node/native/*.node
 sdks/node/npm/*/*.node
 crates/edgesvg-wasm/pkg/
 sdks/python/.pytest_cache/
+sdks/python/dist/
 sdks/python/**/*.so
 sdks/python/**/__pycache__/
 sdks/python/**/*.pyc
