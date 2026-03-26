@@ -2,7 +2,9 @@ use anyhow::Result;
 use exoquant::{convert_to_indexed, ditherer, optimizer, Color};
 use image::{DynamicImage, Rgba, RgbaImage};
 
-use crate::types::{ImageAnalysis, ImageKind, QualityPreset, TraceMode, TraceSettings};
+use crate::types::{
+    ImageAnalysis, ImageKind, LogoQualityPreset, QualityPreset, TraceMode, TraceSettings,
+};
 
 pub fn preprocess_image(
     image: &DynamicImage,
@@ -121,6 +123,67 @@ pub fn trace_settings_for_preset(quality: QualityPreset) -> TraceSettings {
     }
 }
 
+pub fn trace_settings_for_logo_preset(quality: LogoQualityPreset) -> TraceSettings {
+    match quality {
+        LogoQualityPreset::Clean => TraceSettings {
+            color_mode: "color",
+            hierarchical: "stacked",
+            mode: TraceMode::Spline,
+            filter_speckle: 4,
+            color_precision: 6,
+            layer_difference: 16,
+            length_threshold: 4.0,
+            corner_threshold: 60,
+            max_iterations: 10,
+            splice_threshold: 45,
+            path_precision: 5,
+            optimizer_precision: 1,
+        },
+        LogoQualityPreset::Balanced => TraceSettings {
+            color_mode: "color",
+            hierarchical: "stacked",
+            mode: TraceMode::Spline,
+            filter_speckle: 3,
+            color_precision: 7,
+            layer_difference: 12,
+            length_threshold: 3.0,
+            corner_threshold: 50,
+            max_iterations: 12,
+            splice_threshold: 40,
+            path_precision: 6,
+            optimizer_precision: 2,
+        },
+        LogoQualityPreset::High => TraceSettings {
+            color_mode: "color",
+            hierarchical: "stacked",
+            mode: TraceMode::Spline,
+            filter_speckle: 2,
+            color_precision: 8,
+            layer_difference: 8,
+            length_threshold: 2.0,
+            corner_threshold: 40,
+            max_iterations: 15,
+            splice_threshold: 35,
+            path_precision: 7,
+            optimizer_precision: 2,
+        },
+        LogoQualityPreset::Ultra => TraceSettings {
+            color_mode: "color",
+            hierarchical: "stacked",
+            mode: TraceMode::Spline,
+            filter_speckle: 1,
+            color_precision: 8,
+            layer_difference: 4,
+            length_threshold: 1.5,
+            corner_threshold: 30,
+            max_iterations: 20,
+            splice_threshold: 30,
+            path_precision: 8,
+            optimizer_precision: 2,
+        },
+    }
+}
+
 fn default_palette_size(analysis: &ImageAnalysis) -> usize {
     match analysis.image_type {
         ImageKind::Logo => {
@@ -140,8 +203,8 @@ fn default_palette_size(analysis: &ImageAnalysis) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::trace_settings_for_preset;
-    use crate::types::{QualityPreset, TraceMode};
+    use super::{trace_settings_for_logo_preset, trace_settings_for_preset};
+    use crate::types::{LogoQualityPreset, QualityPreset, TraceMode};
 
     #[test]
     fn vectalab_hifi_presets_match_reference_values() {
@@ -167,5 +230,24 @@ mod tests {
         assert_eq!(ultra.layer_difference, 0);
         assert_eq!(ultra.max_iterations, 50);
         assert_eq!(ultra.path_precision, 10);
+    }
+
+    #[test]
+    fn vectalab_logo_presets_match_reference_values() {
+        let clean = trace_settings_for_logo_preset(LogoQualityPreset::Clean);
+        assert_eq!(clean.filter_speckle, 4);
+        assert_eq!(clean.corner_threshold, 60);
+
+        let balanced = trace_settings_for_logo_preset(LogoQualityPreset::Balanced);
+        assert_eq!(balanced.filter_speckle, 3);
+        assert_eq!(balanced.layer_difference, 12);
+
+        let high = trace_settings_for_logo_preset(LogoQualityPreset::High);
+        assert_eq!(high.path_precision, 7);
+        assert_eq!(high.length_threshold, 2.0);
+
+        let ultra = trace_settings_for_logo_preset(LogoQualityPreset::Ultra);
+        assert_eq!(ultra.filter_speckle, 1);
+        assert_eq!(ultra.path_precision, 8);
     }
 }

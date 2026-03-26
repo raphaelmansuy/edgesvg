@@ -5,8 +5,9 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 use vectalab::metrics::render_svg_file_to_png;
 use vectalab::{
-    analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics, vectorize,
-    write_svg, QualityPreset, VectorizeOptions,
+    analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics,
+    determine_auto_mode, vectorize, vectorize_auto, vectorize_logo_premium, vectorize_premium,
+    write_svg, LogoQualityPreset, QualityPreset, VectorizeOptions,
 };
 
 #[derive(Parser)]
@@ -33,6 +34,32 @@ enum Commands {
         max_iterations: usize,
         #[arg(long, value_enum, default_value_t = QualityPreset::Ultra)]
         quality: QualityPreset,
+        #[arg(long)]
+        json: bool,
+    },
+    Logo {
+        input: PathBuf,
+        output: Option<PathBuf>,
+        #[arg(long, value_enum, default_value_t = LogoQualityPreset::Balanced)]
+        quality: LogoQualityPreset,
+        #[arg(long)]
+        colors: Option<usize>,
+        #[arg(long)]
+        json: bool,
+    },
+    Premium {
+        input: PathBuf,
+        output: Option<PathBuf>,
+        #[arg(long, default_value_t = 0.98)]
+        target_ssim: f64,
+        #[arg(long)]
+        colors: Option<usize>,
+        #[arg(long)]
+        json: bool,
+    },
+    Auto {
+        input: PathBuf,
+        output: Option<PathBuf>,
         #[arg(long)]
         json: bool,
     },
@@ -120,6 +147,79 @@ fn main() -> Result<()> {
                     output.display(),
                     report.analysis.image_type,
                     report.quality_preset,
+                    report.metrics.ssim,
+                    report.metrics.file_size as f64 / 1024.0,
+                    report.metrics.path_count
+                );
+            }
+        }
+        Commands::Logo {
+            input,
+            output,
+            quality,
+            colors,
+            json,
+        } => {
+            let output = output.unwrap_or_else(|| input.with_extension("svg"));
+            let (svg, report) = vectorize_logo_premium(&input, quality, colors)?;
+            write_svg(&output, &svg)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "wrote {} | mode=logo preset={:?} ssim={:.4} size={:.1}KB paths={}",
+                    output.display(),
+                    quality,
+                    report.metrics.ssim,
+                    report.metrics.file_size as f64 / 1024.0,
+                    report.metrics.path_count
+                );
+            }
+        }
+        Commands::Premium {
+            input,
+            output,
+            target_ssim,
+            colors,
+            json,
+        } => {
+            let output = output.unwrap_or_else(|| input.with_extension("svg"));
+            let (svg, report) = vectorize_premium(&input, target_ssim, colors)?;
+            write_svg(&output, &svg)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "wrote {} | mode=premium ssim={:.4} size={:.1}KB paths={}",
+                    output.display(),
+                    report.metrics.ssim,
+                    report.metrics.file_size as f64 / 1024.0,
+                    report.metrics.path_count
+                );
+            }
+        }
+        Commands::Auto {
+            input,
+            output,
+            json,
+        } => {
+            let output = output.unwrap_or_else(|| input.with_extension("svg"));
+            let decision = determine_auto_mode(&input)?;
+            let (svg, report) = vectorize_auto(&input)?;
+            write_svg(&output, &svg)?;
+            if json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&json!({
+                        "decision": decision,
+                        "report": report
+                    }))?
+                );
+            } else {
+                println!(
+                    "wrote {} | mode={:?} ssim={:.4} size={:.1}KB paths={}",
+                    output.display(),
+                    decision.mode,
                     report.metrics.ssim,
                     report.metrics.file_size as f64 / 1024.0,
                     report.metrics.path_count

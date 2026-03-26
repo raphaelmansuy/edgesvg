@@ -22,6 +22,21 @@ fn write_fixture(path: &Path) {
     image.save(path).unwrap();
 }
 
+fn write_transparent_icon(path: &Path) {
+    let mut image = RgbaImage::new(32, 32);
+    for y in 0..32 {
+        for x in 0..32 {
+            let pixel = if x > 6 && x < 26 && y > 6 && y < 26 {
+                Rgba([10, 20, 30, 255])
+            } else {
+                Rgba([0, 0, 0, 0])
+            };
+            image.put_pixel(x, y, pixel);
+        }
+    }
+    image.save(path).unwrap();
+}
+
 #[test]
 fn analyze_convert_compare_render_and_benchmark_work_from_cli() {
     let dir = tempdir().unwrap();
@@ -93,4 +108,56 @@ fn analyze_convert_compare_render_and_benchmark_work_from_cli() {
 
     assert!(report_json.exists());
     assert!(report_md.exists());
+}
+
+#[test]
+fn logo_premium_and_auto_commands_work_from_cli() {
+    let dir = tempdir().unwrap();
+    let logo_input = dir.path().join("logo.png");
+    let icon_input = dir.path().join("icon.png");
+    let logo_svg = dir.path().join("logo.svg");
+    let premium_svg = dir.path().join("premium.svg");
+    let auto_svg = dir.path().join("auto.svg");
+    write_fixture(&logo_input);
+    write_transparent_icon(&icon_input);
+
+    Command::cargo_bin("vectalab")
+        .unwrap()
+        .args([
+            "logo",
+            logo_input.to_str().unwrap(),
+            logo_svg.to_str().unwrap(),
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("\"metrics\""));
+
+    Command::cargo_bin("vectalab")
+        .unwrap()
+        .args([
+            "premium",
+            logo_input.to_str().unwrap(),
+            premium_svg.to_str().unwrap(),
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("\"metrics\""));
+
+    Command::cargo_bin("vectalab")
+        .unwrap()
+        .args([
+            "auto",
+            icon_input.to_str().unwrap(),
+            auto_svg.to_str().unwrap(),
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("\"decision\""));
+
+    assert!(logo_svg.exists());
+    assert!(premium_svg.exists());
+    assert!(auto_svg.exists());
 }

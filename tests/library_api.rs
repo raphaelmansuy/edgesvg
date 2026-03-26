@@ -3,8 +3,10 @@ use std::path::Path;
 use image::{DynamicImage, Rgba, RgbaImage};
 use tempfile::tempdir;
 use vectalab::{
-    analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics, optimize_svg,
-    preprocess_image, quantize_image, vectorize, QualityPreset, VectorizeOptions,
+    analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics,
+    determine_auto_mode, optimize_svg, preprocess_image, quantize_image, vectorize, vectorize_auto,
+    vectorize_logo_premium, vectorize_premium, AutoMode, LogoQualityPreset, QualityPreset,
+    VectorizeOptions,
 };
 
 fn sample_image() -> DynamicImage {
@@ -104,6 +106,43 @@ fn golden_benchmark_rasterizes_reference_svgs() {
     assert_eq!(report.entries.len(), 1);
     assert!(work_dir.join("rendered_inputs/sample.png").exists());
     assert!(work_dir.join("vectorized/sample.svg").exists());
+}
+
+#[test]
+fn higher_level_api_handles_logo_premium_and_auto_modes() {
+    let dir = tempdir().unwrap();
+    let logo = dir.path().join("logo.png");
+    let icon = dir.path().join("icon.png");
+    sample_image().save(&logo).unwrap();
+
+    let mut icon_image = RgbaImage::new(32, 32);
+    for y in 0..32 {
+        for x in 0..32 {
+            let pixel = if x > 6 && x < 26 && y > 6 && y < 26 {
+                Rgba([30, 40, 50, 255])
+            } else {
+                Rgba([0, 0, 0, 0])
+            };
+            icon_image.put_pixel(x, y, pixel);
+        }
+    }
+    DynamicImage::ImageRgba8(icon_image).save(&icon).unwrap();
+
+    let (logo_svg, logo_report) =
+        vectorize_logo_premium(&logo, LogoQualityPreset::Clean, Some(3)).unwrap();
+    assert!(logo_svg.contains("<svg"));
+    assert!(logo_report.metrics.path_count > 0);
+
+    let (premium_svg, premium_report) = vectorize_premium(&logo, 0.9, Some(3)).unwrap();
+    assert!(premium_svg.contains("<svg"));
+    assert!(premium_report.metrics.ssim >= 0.0);
+
+    let decision = determine_auto_mode(&icon).unwrap();
+    assert_eq!(decision.mode, AutoMode::Logo);
+
+    let (auto_svg, auto_report) = vectorize_auto(&icon).unwrap();
+    assert!(auto_svg.contains("<svg"));
+    assert!(auto_report.metrics.path_count > 0);
 }
 
 #[test]

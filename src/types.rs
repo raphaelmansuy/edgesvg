@@ -27,6 +27,21 @@ pub enum QualityPreset {
     Ultra,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+pub enum LogoQualityPreset {
+    Clean,
+    Balanced,
+    High,
+    Ultra,
+}
+
+impl Default for LogoQualityPreset {
+    fn default() -> Self {
+        Self::Balanced
+    }
+}
+
 impl QualityPreset {
     pub fn optimizer_precision(self) -> u32 {
         match self {
@@ -40,6 +55,13 @@ impl Default for QualityPreset {
     fn default() -> Self {
         Self::Balanced
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoMode {
+    Logo,
+    Premium,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
