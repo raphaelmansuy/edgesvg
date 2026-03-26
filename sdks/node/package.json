@@ -14,6 +14,7 @@
   },
   "files": [
     "dist/",
+    "LICENSE",
     "native/",
     "npm/",
     "README.md"
@@ -28,7 +29,7 @@
   "engines": {
     "node": ">=18"
   },
-  "license": "MIT",
+  "license": "Apache-2.0",
   "homepage": "https://github.com/raphaelmansuy/edgesvg#readme",
   "repository": {
     "type": "git",

@@ -5,5 +5,5 @@
   "files": ["*.node"],
   "os": ["win32"],
   "cpu": ["x64"],
-  "license": "MIT"
+  "license": "Apache-2.0"
 }

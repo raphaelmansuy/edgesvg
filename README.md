@@ -1,133 +1,145 @@
 # EdgeSVG
 
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.82%2B-orange.svg)](https://www.rust-lang.org)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**Raster to SVG vectorization with one Rust engine and five delivery surfaces: library, CLI, Python, Node.js, and WebAssembly.**
+**Open source raster-to-SVG vectorization that is actually built for production automation, not for demos.**
 
-EdgeSVG converts PNG and JPG inputs into compact SVGs while measuring fidelity against the original raster. The repository is structured so every packaging target reuses the same Rust decision logic, scoring, and output contract.
+Most teams that need vectorization in a build pipeline, design-export flow, or asset ingestion service run into the same problem:
 
-## Table of Contents
+- commercial tools produce strong output, but they are black boxes, expensive, and hard to automate
+- classic open-source tracers are easy to call, but the SVGs are noisy, oversized, or brittle
+- language wrappers around native tracers usually drift, so the CLI, Python package, browser build, and Node module behave differently
 
-- [Why EdgeSVG](#why-edgesvg)
-- [What Ships](#what-ships)
-- [Quick Start](#quick-start)
-- [CLI](#cli)
-- [Rust API](#rust-api)
-- [Python SDK](#python-sdk)
-- [Node.js SDK](#nodejs-sdk)
-- [WebAssembly](#webassembly)
-- [Benchmarking](#benchmarking)
-- [Repository Layout](#repository-layout)
-- [CI/CD](#cicd)
-- [Documentation](#documentation)
+EdgeSVG exists to fix that.
 
-## Why EdgeSVG
+It is a single Rust-native engine that:
 
-Most open raster-to-vector tools have one of three problems:
+- analyzes the input before tracing
+- chooses different strategies for logos, icons, illustrations, and photos
+- measures SVG quality against the original raster instead of pretending every run is “good”
+- ships the same contract across CLI, Rust, Python, Node.js, and WebAssembly
 
-- they are easy to install but produce noisy SVGs
-- they produce decent SVGs but are hard to automate
-- every SDK or wrapper drifts from the core engine
+If the goal is “convert PNG or JPG assets into SVGs inside a real software system,” this project is aimed at that exact use case.
 
-EdgeSVG is built to avoid that split:
+## Why This Project Exists
 
-- native Rust pipeline
-- adaptive image analysis before tracing
-- built-in SVG optimization and raster-vs-vector scoring
-- deterministic CLI and library behavior
-- Python, Node.js, and WASM bindings generated from the same Rust contract
+The open-source gap is not “can we trace an image into paths.”
 
-## What Ships
+The gap is:
 
-| Surface | Status | Path |
+- reproducibility
+- quality measurement
+- packaging
+- integration
+- operational trust
+
+That is why EdgeSVG is opinionated about the parts most repos avoid:
+
+| Problem | EdgeSVG answer |
+|---|---|
+| The same image needs different handling depending on whether it is a logo or a rich illustration | Built-in image classification drives preprocessing and tracing decisions |
+| SVG output may look acceptable but regress silently over time | Every run can be scored against the source raster with SSIM, edge similarity, IoU, topology, size, and path count |
+| Teams need one engine across multiple runtimes | Rust is the source of truth; Python, Node.js, and WASM bind to the same contract |
+| Batch conversion needs to be benchmarked and compared over time | The repo ships benchmark runners, golden data, JSON reports, and Markdown reports |
+| Most repos claim multi-language support but only the Rust path is tested | CI validates Rust, Python, Node.js, and WASM separately |
+
+## What EdgeSVG Is
+
+EdgeSVG is:
+
+- a Rust crate
+- a CLI binary
+- a Python SDK
+- a Node.js SDK
+- a WebAssembly package
+- a benchmarkable conversion pipeline
+
+EdgeSVG is not:
+
+- a GUI design tool
+- an OCR engine
+- a hand-drawn illustration cleanup tool
+- a hosted API
+
+## Why It Is Different
+
+The core design choice is simple: **do not expose tracing as a raw black-box call and hope callers clean up the result later**.
+
+EdgeSVG performs:
+
+1. raster analysis
+2. mode selection
+3. preprocessing
+4. tracing
+5. SVG optimization
+6. rasterized verification
+7. candidate scoring
+
+That means the output contract already contains the information teams actually need:
+
+- what method was requested
+- what method was actually used
+- what the image was classified as
+- how good the result was
+- how large the result is
+- how complex the path structure is
+
+## Product Surfaces
+
+| Surface | Status | Notes |
 |---|---|---|
-| Rust crate + binary | Shipped | `Cargo.toml`, `src/` |
-| CLI | Shipped | `cargo run -- ...` or installed binary |
-| Python SDK | Shipped | `sdks/python` |
-| Node.js SDK | Shipped | `sdks/node` |
-| WebAssembly crate | Shipped | `crates/edgesvg-wasm` |
-| CI/CD workflows | Shipped | `.github/workflows/` |
+| Rust | Ready | direct crate API plus stable SDK contract |
+| CLI | Ready | machine-readable JSON and benchmark commands |
+| Python | Ready | PyO3 native extension |
+| Node.js | Ready | N-API native addon with platform packages |
+| WASM | Ready | `wasm-bindgen` wrapper for browser and edge runtimes |
 
-## Quick Start
+## Installation
 
-### Local source build
+### CLI from source
 
 ```bash
-cargo build --release
-cargo run --release -- convert examples/test_logo_benchmark.png out.svg
+cargo install --path .
 ```
 
-### Local Python SDK
+### Rust
+
+```toml
+[dependencies]
+edgesvg = "0.2"
+```
+
+### Python
 
 ```bash
 cd sdks/python
 maturin develop
-python -c "import edgesvg; print(edgesvg.version())"
 ```
 
-### Local Node.js SDK
+### Node.js
 
 ```bash
 cd sdks/node
 npm ci
 npm run build
-node -e "const sdk=require('./dist/index.js'); console.log(sdk.version())"
 ```
 
-### Local WASM package
+### WebAssembly
 
 ```bash
-cargo check -p edgesvg-wasm --target wasm32-unknown-unknown
-wasm-pack build crates/edgesvg-wasm --target bundler --out-dir pkg
+wasm-pack build crates/edgesvg-wasm --target bundler --out-dir pkg --release
 ```
 
-## CLI
+## Quick Start
 
-The primary command is `edgesvg`.
+### CLI
 
 ```bash
-edgesvg convert input.png output.svg --method auto --json
+edgesvg convert examples/test_logo_benchmark.png out.svg --method auto --json
 ```
 
-Key subcommands:
-
-| Command | Purpose |
-|---|---|
-| `convert` | Single-file raster to SVG conversion |
-| `logo` | Logo-oriented tracing path |
-| `premium` | Higher-fidelity adaptive path |
-| `auto` | Let EdgeSVG choose logo vs premium |
-| `smart` | Multi-pass target-driven search |
-| `info` | Metadata plus recommended method |
-| `analyze` | Raw image classification details |
-| `compare` | Score a raster against an SVG |
-| `render` | Render SVG to PNG |
-| `optimize` | Minify an SVG |
-| `benchmark` | Batch benchmark an input directory |
-| `benchmark-golden` | Benchmark the golden SVG corpus |
-
-Detailed command examples: [docs/cli.md](docs/cli.md)
-
-## Rust API
-
-The library exposes both low-level and package-friendly APIs.
-
-Low-level:
-
-```rust
-use std::path::Path;
-use edgesvg::{vectorize, VectorizeOptions};
-
-let (svg, report) = vectorize(
-    Path::new("examples/test_logo_benchmark.png"),
-    &VectorizeOptions::default(),
-)?;
-println!("ssim={:.4}", report.metrics.ssim);
-# Ok::<(), anyhow::Error>(())
-```
-
-Stable SDK-facing contract:
+### Rust
 
 ```rust
 use std::path::Path;
@@ -140,41 +152,30 @@ let result = vectorize_path(
         ..VectorizeRequest::default()
     },
 )?;
-println!("{}", result.svg.len());
+
+println!("ssim={:.4}", result.report.metrics.ssim);
 # Ok::<(), anyhow::Error>(())
 ```
 
-More: [docs/api.md](docs/api.md)
-
-## Python SDK
+### Python
 
 ```python
 import edgesvg
 
 result = edgesvg.vectorize("examples/test_logo_benchmark.png", method="auto")
 print(result["report"]["metrics"]["ssim"])
-
-metrics = edgesvg.compare("examples/test_logo_benchmark.png", result["svg"])
-preview = edgesvg.render_png(result["svg"], 512, 512)
 ```
 
-Package docs: [docs/python_sdk.md](docs/python_sdk.md)
-
-## Node.js SDK
+### Node.js
 
 ```ts
-import { compare, renderPng, vectorize } from 'edgesvg';
+import { vectorize } from 'edgesvg';
 
 const result = vectorize('examples/test_logo_benchmark.png', { method: 'auto' });
-const metrics = compare('examples/test_logo_benchmark.png', result.svg);
-const preview = renderPng(result.svg, 512, 512);
+console.log(result.report.metrics.ssim);
 ```
 
-Package docs: [docs/node_sdk.md](docs/node_sdk.md)
-
-## WebAssembly
-
-The WASM crate accepts raster bytes and returns serializable objects, which makes it suitable for browser upload flows and serverless edge runtimes.
+### WebAssembly
 
 ```ts
 import init, { vectorize } from './pkg/edgesvg_wasm.js';
@@ -183,61 +184,83 @@ await init();
 const result = vectorize(fileBytes, { method: 'auto' });
 ```
 
-More: [docs/wasm_sdk.md](docs/wasm_sdk.md)
+## What You Get Back
+
+The stable SDK-facing contract returns:
+
+- `svg`
+- `report`
+- `requested_method`
+- `effective_method`
+- `fallback_from`
+- `decision`
+
+This is intentional. A vectorizer that only returns a string is hard to operate at scale.
+
+## CLI Command Map
+
+| Command | Purpose |
+|---|---|
+| `convert` | default single-file conversion |
+| `logo` | logo and icon oriented conversion |
+| `premium` | higher-fidelity conversion path |
+| `auto` | let EdgeSVG choose the mode |
+| `smart` | iterative target-driven search |
+| `info` | metadata and recommendation |
+| `analyze` | image classification details |
+| `compare` | raster-vs-SVG metrics |
+| `render` | SVG to PNG |
+| `optimize` | SVG cleanup and minification |
+| `benchmark` | batch raster benchmark |
+| `benchmark-golden` | golden SVG benchmark |
 
 ## Benchmarking
 
-Fast local verification:
+EdgeSVG ships with a benchmark workflow because “looks good to me” is not a release criterion.
 
 ```bash
 make bench-smoke
-```
-
-Main regression sweep:
-
-```bash
 make bench-sample
-```
-
-Full corpus:
-
-```bash
 make bench-full
 ```
 
-More: [docs/benchmarks.md](docs/benchmarks.md)
+Reports include:
+
+- fidelity metrics
+- size and path complexity
+- per-group summaries
+- lowest-performing assets
+- JSON and Markdown outputs
+
+## CI/CD
+
+The repository validates the full product surface:
+
+- Rust formatting, lint, and tests
+- Python package build and tests
+- Node.js addon build and tests
+- WASM compilation and package build
+
+Release workflows are included for:
+
+- crates.io
+- PyPI
+- npm
+- WASM package artifacts
 
 ## Repository Layout
 
 | Path | Purpose |
 |---|---|
-| `src/` | Rust library and CLI |
-| `crates/edgesvg-python` | PyO3 native module |
-| `crates/edgesvg-node` | N-API native addon |
-| `crates/edgesvg-wasm` | `wasm-bindgen` wrapper |
+| `src/` | Rust engine and CLI |
+| `crates/edgesvg-python` | Python native binding crate |
+| `crates/edgesvg-node` | Node native binding crate |
+| `crates/edgesvg-wasm` | WASM wrapper crate |
 | `sdks/python` | Python package metadata and tests |
 | `sdks/node` | Node package metadata and tests |
-| `docs/` | High-signal operational docs |
-| `tests/` | Integration and CLI tests |
-| `golden_data/` | Regression benchmark corpus |
-
-## CI/CD
-
-GitHub Actions now validates:
-
-- Rust formatting, clippy, and tests
-- Python SDK build and tests
-- Node.js SDK build and tests
-- WASM target compilation
-
-Release workflows are included for:
-
-- crates.io publishing
-- PyPI publishing
-- npm publishing with platform-specific native packages
-- WASM package artifact generation
-
-Details: [docs/ci_and_publishing.md](docs/ci_and_publishing.md)
+| `docs/` | operational documentation |
+| `tests/` | Rust integration and e2e tests |
+| `golden_data/` | benchmark corpus |
 
 ## Documentation
 
@@ -255,6 +278,10 @@ Details: [docs/ci_and_publishing.md](docs/ci_and_publishing.md)
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
 ## License
 
-MIT. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE).
