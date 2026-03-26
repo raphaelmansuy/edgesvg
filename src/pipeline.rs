@@ -2,13 +2,13 @@ use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
 use image::RgbaImage;
-use vtracer::ColorImage;
 
 use crate::analysis::analyze_image;
 use crate::metrics::compute_metrics;
-use crate::preprocess::{to_vtracer_config, trace_settings_for_preset};
+use crate::preprocess::trace_settings_for_preset;
 use crate::svg::optimize_svg;
 use crate::types::{QualityPreset, VectorizationReport};
+use crate::vectorizer::trace_to_svg;
 
 #[derive(Debug, Clone)]
 pub struct VectorizeOptions {
@@ -68,14 +68,7 @@ pub fn write_svg(output_path: &Path, svg: &str) -> Result<()> {
 }
 
 fn trace_image(image: &RgbaImage, settings: &crate::types::TraceSettings) -> Result<String> {
-    let color_image = ColorImage {
-        pixels: image.clone().into_raw(),
-        width: image.width() as usize,
-        height: image.height() as usize,
-    };
-    let config = to_vtracer_config(settings);
-    let svg = vtracer::convert(color_image, config).map_err(|e| anyhow!("vtracer failed: {e}"))?;
-    Ok(svg.to_string())
+    trace_to_svg(image, settings).map_err(|e| anyhow!("internal vectorizer failed: {e}"))
 }
 
 pub fn vectorize_logo(

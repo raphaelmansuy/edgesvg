@@ -5,8 +5,8 @@ use clap::{Parser, Subcommand};
 use serde_json::json;
 use vectalab::metrics::render_svg_file_to_png;
 use vectalab::{
-    analyze_image, benchmark_directory, compute_metrics, vectorize, write_svg, QualityPreset,
-    VectorizeOptions,
+    analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics, vectorize,
+    write_svg, QualityPreset, VectorizeOptions,
 };
 
 #[derive(Parser)]
@@ -64,6 +64,26 @@ enum Commands {
         max_iterations: usize,
         #[arg(long, value_enum, default_value_t = QualityPreset::Ultra)]
         quality: QualityPreset,
+        #[arg(long)]
+        json_path: Option<PathBuf>,
+        #[arg(long)]
+        markdown_path: Option<PathBuf>,
+    },
+    BenchmarkGolden {
+        #[arg(long, default_value = "golden_data")]
+        golden_dir: PathBuf,
+        #[arg(long, default_value = "benchmark_runs/golden_data")]
+        work_dir: PathBuf,
+        #[arg(long, default_value_t = 0.998)]
+        target_ssim: f64,
+        #[arg(long, default_value_t = 100_000)]
+        max_file_size: usize,
+        #[arg(long, default_value_t = 1)]
+        max_iterations: usize,
+        #[arg(long, value_enum, default_value_t = QualityPreset::Figma)]
+        quality: QualityPreset,
+        #[arg(long)]
+        limit: Option<usize>,
         #[arg(long)]
         json_path: Option<PathBuf>,
         #[arg(long)]
@@ -161,6 +181,48 @@ fn main() -> Result<()> {
                 quality: Some(quality),
             };
             let report = benchmark_directory(&input_dir, &output_dir, &options)?;
+            if let Some(path) = json_path {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&path, serde_json::to_string_pretty(&report)?)?;
+            }
+            if let Some(path) = markdown_path {
+                if let Some(parent) = path.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::write(&path, report.to_markdown())?;
+            }
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json!({
+                    "entries": report.entries.len(),
+                    "average_ssim": report.average_ssim,
+                    "average_psnr": report.average_psnr,
+                    "average_mae": report.average_mae,
+                    "average_file_size": report.average_file_size,
+                    "average_path_count": report.average_path_count
+                }))?
+            );
+        }
+        Commands::BenchmarkGolden {
+            golden_dir,
+            work_dir,
+            target_ssim,
+            max_file_size,
+            max_iterations,
+            quality,
+            limit,
+            json_path,
+            markdown_path,
+        } => {
+            let options = VectorizeOptions {
+                target_ssim,
+                max_file_size,
+                max_iterations,
+                quality: Some(quality),
+            };
+            let report = benchmark_golden_data(&golden_dir, &work_dir, &options, limit)?;
             if let Some(path) = json_path {
                 if let Some(parent) = path.parent() {
                     std::fs::create_dir_all(parent)?;

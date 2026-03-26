@@ -5,9 +5,10 @@ pub mod pipeline;
 pub mod preprocess;
 pub mod svg;
 pub mod types;
+mod vectorizer;
 
 pub use analysis::analyze_image;
-pub use benchmark::{benchmark_directory, BenchmarkReport};
+pub use benchmark::{benchmark_directory, benchmark_golden_data, BenchmarkReport};
 pub use metrics::{compute_metrics, render_svg_to_image, QualityMetrics};
 pub use pipeline::{vectorize, vectorize_icon, vectorize_logo, write_svg, VectorizeOptions};
 pub use preprocess::{

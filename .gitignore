@@ -2,7 +2,12 @@
 /target/
 
 # Generated local artifacts
-/benchmark_runs/
+/benchmark_runs/*
+!/benchmark_runs/README.md
+!/benchmark_runs/golden_full/
+/benchmark_runs/golden_full/*
+!/benchmark_runs/golden_full/report.json
+!/benchmark_runs/golden_full/report.md
 /demo/output.svg
 /demo/output.png
 

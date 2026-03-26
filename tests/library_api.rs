@@ -3,8 +3,8 @@ use std::path::Path;
 use image::{DynamicImage, Rgba, RgbaImage};
 use tempfile::tempdir;
 use vectalab::{
-    analyze_image, benchmark_directory, compute_metrics, optimize_svg, preprocess_image,
-    quantize_image, vectorize, QualityPreset, VectorizeOptions,
+    analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics, optimize_svg,
+    preprocess_image, quantize_image, vectorize, QualityPreset, VectorizeOptions,
 };
 
 fn sample_image() -> DynamicImage {
@@ -74,6 +74,36 @@ fn benchmark_runner_produces_entries_and_markdown() {
         benchmark_directory(&input_dir, &output_dir, &VectorizeOptions::default()).unwrap();
     assert_eq!(report.entries.len(), 1);
     assert!(report.to_markdown().contains("Benchmark Report"));
+}
+
+#[test]
+fn golden_benchmark_rasterizes_reference_svgs() {
+    let dir = tempdir().unwrap();
+    let golden_dir = dir.path().join("golden");
+    let work_dir = dir.path().join("work");
+    std::fs::create_dir_all(&golden_dir).unwrap();
+    std::fs::write(
+        golden_dir.join("sample.svg"),
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="16" height="32" fill="#ff0000"/><rect x="16" width="16" height="32" fill="#0000ff"/></svg>"##,
+    )
+    .unwrap();
+
+    let report = benchmark_golden_data(
+        &golden_dir,
+        &work_dir,
+        &VectorizeOptions {
+            target_ssim: 0.5,
+            max_file_size: 200_000,
+            max_iterations: 1,
+            quality: Some(QualityPreset::Figma),
+        },
+        None,
+    )
+    .unwrap();
+
+    assert_eq!(report.entries.len(), 1);
+    assert!(work_dir.join("rendered_inputs/sample.png").exists());
+    assert!(work_dir.join("vectorized/sample.svg").exists());
 }
 
 #[test]

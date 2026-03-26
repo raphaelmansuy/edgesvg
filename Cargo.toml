@@ -11,12 +11,13 @@ repository = "https://github.com/raphaelmansuy/vectalab"
 documentation = "https://docs.rs/vectalab"
 keywords = ["svg", "vectorization", "png", "graphics", "cli"]
 categories = ["graphics", "multimedia::images", "command-line-utilities"]
-include = ["src/**", "tests/**", "examples/**", "docs/**", "demo/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CONTRIBUTING.md"]
+include = ["src/**", "tests/**", "examples/**", "docs/**", "demo/**", "golden_data/**", "research/**", "spec/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CONTRIBUTING.md"]
 
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4.6", features = ["derive"] }
 exoquant = "0.2"
+fastrand = "2.3"
 image = "0.25"
 regex = "1.12"
 resvg = "0.47"
@@ -24,7 +25,6 @@ roxmltree = "0.20"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 visioncortex = "0.8.10"
-vtracer = "0.6.5"
 walkdir = "2.5"
 
 [dev-dependencies]

@@ -4,6 +4,7 @@ use anyhow::Result;
 use serde::Serialize;
 use walkdir::WalkDir;
 
+use crate::metrics::render_svg_file_to_png;
 use crate::pipeline::{vectorize, write_svg, VectorizeOptions};
 use crate::types::VectorizationReport;
 
@@ -47,29 +48,48 @@ pub fn benchmark_directory(
         });
     }
 
-    let len = entries.len().max(1) as f64;
-    let average_ssim = entries.iter().map(|e| e.report.metrics.ssim).sum::<f64>() / len;
-    let average_psnr = entries.iter().map(|e| e.report.metrics.psnr).sum::<f64>() / len;
-    let average_mae = entries.iter().map(|e| e.report.metrics.mae).sum::<f64>() / len;
-    let average_file_size = entries
-        .iter()
-        .map(|e| e.report.metrics.file_size as f64)
-        .sum::<f64>()
-        / len;
-    let average_path_count = entries
-        .iter()
-        .map(|e| e.report.metrics.path_count as f64)
-        .sum::<f64>()
-        / len;
+    Ok(summarize_entries(entries))
+}
 
-    Ok(BenchmarkReport {
-        entries,
-        average_ssim,
-        average_psnr,
-        average_mae,
-        average_file_size,
-        average_path_count,
-    })
+pub fn benchmark_golden_data(
+    golden_dir: &Path,
+    work_dir: &Path,
+    options: &VectorizeOptions,
+    limit: Option<usize>,
+) -> Result<BenchmarkReport> {
+    let raster_dir = work_dir.join("rendered_inputs");
+    let output_dir = work_dir.join("vectorized");
+    std::fs::create_dir_all(&raster_dir)?;
+    std::fs::create_dir_all(&output_dir)?;
+
+    let mut entries = Vec::new();
+    let mut svg_inputs = golden_svg_inputs(golden_dir);
+    if let Some(limit) = limit {
+        svg_inputs.truncate(limit);
+    }
+
+    for reference_svg in svg_inputs {
+        let relative = reference_svg
+            .strip_prefix(golden_dir)
+            .unwrap_or(&reference_svg);
+        let png_name = relative.with_extension("png");
+        let raster_path = raster_dir.join(&png_name);
+        if let Some(parent) = raster_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        render_svg_file_to_png(&reference_svg, &raster_path)?;
+
+        let output = output_dir.join(relative).with_extension("svg");
+        let (svg, report) = vectorize(&raster_path, options)?;
+        write_svg(&output, &svg)?;
+        entries.push(BenchmarkEntry {
+            input: raster_path.display().to_string(),
+            output: output.display().to_string(),
+            report,
+        });
+    }
+
+    Ok(summarize_entries(entries))
 }
 
 impl BenchmarkReport {
@@ -112,6 +132,32 @@ impl BenchmarkReport {
     }
 }
 
+fn summarize_entries(entries: Vec<BenchmarkEntry>) -> BenchmarkReport {
+    let len = entries.len().max(1) as f64;
+    let average_ssim = entries.iter().map(|e| e.report.metrics.ssim).sum::<f64>() / len;
+    let average_psnr = entries.iter().map(|e| e.report.metrics.psnr).sum::<f64>() / len;
+    let average_mae = entries.iter().map(|e| e.report.metrics.mae).sum::<f64>() / len;
+    let average_file_size = entries
+        .iter()
+        .map(|e| e.report.metrics.file_size as f64)
+        .sum::<f64>()
+        / len;
+    let average_path_count = entries
+        .iter()
+        .map(|e| e.report.metrics.path_count as f64)
+        .sum::<f64>()
+        / len;
+
+    BenchmarkReport {
+        entries,
+        average_ssim,
+        average_psnr,
+        average_mae,
+        average_file_size,
+        average_path_count,
+    }
+}
+
 fn raster_inputs(dir: &Path) -> Vec<PathBuf> {
     let mut inputs = WalkDir::new(dir)
         .into_iter()
@@ -128,6 +174,25 @@ fn raster_inputs(dir: &Path) -> Vec<PathBuf> {
                         "png" | "jpg" | "jpeg" | "bmp" | "webp"
                     )
                 })
+                .unwrap_or(false)
+        })
+        .map(|entry| entry.into_path())
+        .collect::<Vec<_>>();
+    inputs.sort();
+    inputs
+}
+
+fn golden_svg_inputs(dir: &Path) -> Vec<PathBuf> {
+    let mut inputs = WalkDir::new(dir)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .filter(|entry| {
+            entry
+                .path()
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| ext.eq_ignore_ascii_case("svg"))
                 .unwrap_or(false)
         })
         .map(|entry| entry.into_path())

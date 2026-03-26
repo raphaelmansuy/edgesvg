@@ -1,8 +1,6 @@
 use anyhow::Result;
 use exoquant::{convert_to_indexed, ditherer, optimizer, Color};
 use image::{DynamicImage, Rgba, RgbaImage};
-use visioncortex::PathSimplifyMode;
-use vtracer::Config;
 
 use crate::types::{ImageAnalysis, ImageKind, QualityPreset, TraceMode, TraceSettings};
 
@@ -120,25 +118,6 @@ pub fn trace_settings_for_preset(quality: QualityPreset) -> TraceSettings {
             path_precision: 10,
             optimizer_precision: 2,
         },
-    }
-}
-
-pub fn to_vtracer_config(settings: &TraceSettings) -> Config {
-    Config {
-        color_mode: vtracer::ColorMode::Color,
-        hierarchical: vtracer::Hierarchical::Stacked,
-        filter_speckle: settings.filter_speckle,
-        color_precision: settings.color_precision,
-        layer_difference: settings.layer_difference,
-        mode: match settings.mode {
-            TraceMode::Spline => PathSimplifyMode::Spline,
-            TraceMode::Polygon => PathSimplifyMode::Polygon,
-        },
-        corner_threshold: settings.corner_threshold,
-        length_threshold: settings.length_threshold,
-        max_iterations: settings.max_iterations,
-        splice_threshold: settings.splice_threshold,
-        path_precision: Some(settings.path_precision),
     }
 }
 
