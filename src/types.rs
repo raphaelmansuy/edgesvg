@@ -21,16 +21,32 @@ pub enum Complexity {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum QualityPreset {
-    Compact,
+    Figma,
     Balanced,
     Quality,
     Ultra,
 }
 
 impl QualityPreset {
-    pub fn ordered_for_iterations() -> [Self; 3] {
-        [Self::Compact, Self::Balanced, Self::Quality]
+    pub fn optimizer_precision(self) -> u32 {
+        match self {
+            Self::Figma => 1,
+            Self::Balanced | Self::Quality | Self::Ultra => 2,
+        }
     }
+}
+
+impl Default for QualityPreset {
+    fn default() -> Self {
+        Self::Balanced
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TraceMode {
+    Spline,
+    Polygon,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -49,14 +65,18 @@ pub struct ImageAnalysis {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct TraceSettings {
+    pub color_mode: &'static str,
+    pub hierarchical: &'static str,
+    pub mode: TraceMode,
     pub filter_speckle: usize,
     pub color_precision: i32,
     pub layer_difference: i32,
-    pub corner_threshold: i32,
     pub length_threshold: f64,
+    pub corner_threshold: i32,
     pub max_iterations: usize,
     pub splice_threshold: i32,
     pub path_precision: u32,
+    pub optimizer_precision: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -4,7 +4,7 @@ use image::{DynamicImage, Rgba, RgbaImage};
 use visioncortex::PathSimplifyMode;
 use vtracer::Config;
 
-use crate::types::{ImageAnalysis, ImageKind, QualityPreset, TraceSettings};
+use crate::types::{ImageAnalysis, ImageKind, QualityPreset, TraceMode, TraceSettings};
 
 pub fn preprocess_image(
     image: &DynamicImage,
@@ -58,74 +58,69 @@ pub fn count_unique_colors(image: &RgbaImage) -> usize {
 }
 
 pub fn adaptive_trace_settings(analysis: &ImageAnalysis, quality: QualityPreset) -> TraceSettings {
-    let mut base = match analysis.image_type {
-        ImageKind::Logo => TraceSettings {
-            filter_speckle: 8,
-            color_precision: 4,
-            layer_difference: 32,
-            corner_threshold: 60,
-            length_threshold: 4.0,
-            max_iterations: 10,
-            splice_threshold: 45,
-            path_precision: 3,
-        },
-        ImageKind::Icon => TraceSettings {
-            filter_speckle: 6,
-            color_precision: 5,
-            layer_difference: 24,
-            corner_threshold: 50,
-            length_threshold: 3.5,
-            max_iterations: 12,
-            splice_threshold: 45,
-            path_precision: 4,
-        },
-        ImageKind::Illustration => TraceSettings {
+    let _ = analysis;
+    trace_settings_for_preset(quality)
+}
+
+pub fn trace_settings_for_preset(quality: QualityPreset) -> TraceSettings {
+    match quality {
+        QualityPreset::Figma => TraceSettings {
+            color_mode: "color",
+            hierarchical: "stacked",
+            mode: TraceMode::Spline,
             filter_speckle: 4,
             color_precision: 6,
             layer_difference: 16,
-            corner_threshold: 45,
-            length_threshold: 3.0,
-            max_iterations: 15,
+            length_threshold: 4.0,
+            corner_threshold: 60,
+            max_iterations: 10,
             splice_threshold: 45,
             path_precision: 5,
+            optimizer_precision: 1,
         },
-        ImageKind::Photo => TraceSettings {
+        QualityPreset::Balanced => TraceSettings {
+            color_mode: "color",
+            hierarchical: "stacked",
+            mode: TraceMode::Spline,
             filter_speckle: 2,
             color_precision: 6,
             layer_difference: 8,
-            corner_threshold: 30,
-            length_threshold: 3.0,
-            max_iterations: 20,
+            length_threshold: 3.5,
+            corner_threshold: 45,
+            max_iterations: 15,
             splice_threshold: 45,
             path_precision: 6,
+            optimizer_precision: 2,
         },
-    };
-
-    match quality {
-        QualityPreset::Compact => {
-            base.filter_speckle = (base.filter_speckle * 2).min(16);
-            base.layer_difference = (base.layer_difference * 2).min(64);
-            base.color_precision = (base.color_precision - 2).max(3);
-            base.path_precision = base.path_precision.saturating_sub(1).max(2);
-        }
-        QualityPreset::Balanced => {}
-        QualityPreset::Quality => {
-            base.filter_speckle = (base.filter_speckle / 2).max(1);
-            base.layer_difference = (base.layer_difference / 2).max(4);
-            base.color_precision = (base.color_precision + 1).min(8);
-            base.path_precision += 1;
-        }
-        QualityPreset::Ultra => {
-            base.filter_speckle = (base.filter_speckle / 2).max(1);
-            base.layer_difference = (base.layer_difference / 2).max(4);
-            base.color_precision = (base.color_precision + 2).min(8);
-            base.path_precision += 2;
-            base.max_iterations += 4;
-            base.length_threshold = base.length_threshold.max(2.5);
-        }
+        QualityPreset::Quality => TraceSettings {
+            color_mode: "color",
+            hierarchical: "stacked",
+            mode: TraceMode::Spline,
+            filter_speckle: 1,
+            color_precision: 8,
+            layer_difference: 4,
+            length_threshold: 3.0,
+            corner_threshold: 30,
+            max_iterations: 20,
+            splice_threshold: 45,
+            path_precision: 8,
+            optimizer_precision: 2,
+        },
+        QualityPreset::Ultra => TraceSettings {
+            color_mode: "color",
+            hierarchical: "stacked",
+            mode: TraceMode::Polygon,
+            filter_speckle: 0,
+            color_precision: 8,
+            layer_difference: 0,
+            length_threshold: 3.5,
+            corner_threshold: 10,
+            max_iterations: 50,
+            splice_threshold: 45,
+            path_precision: 10,
+            optimizer_precision: 2,
+        },
     }
-
-    base
 }
 
 pub fn to_vtracer_config(settings: &TraceSettings) -> Config {
@@ -135,7 +130,10 @@ pub fn to_vtracer_config(settings: &TraceSettings) -> Config {
         filter_speckle: settings.filter_speckle,
         color_precision: settings.color_precision,
         layer_difference: settings.layer_difference,
-        mode: PathSimplifyMode::Spline,
+        mode: match settings.mode {
+            TraceMode::Spline => PathSimplifyMode::Spline,
+            TraceMode::Polygon => PathSimplifyMode::Polygon,
+        },
         corner_threshold: settings.corner_threshold,
         length_threshold: settings.length_threshold,
         max_iterations: settings.max_iterations,
@@ -158,5 +156,37 @@ fn default_palette_size(analysis: &ImageAnalysis) -> usize {
         ImageKind::Icon => 24,
         ImageKind::Illustration => 48,
         ImageKind::Photo => 32,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::trace_settings_for_preset;
+    use crate::types::{QualityPreset, TraceMode};
+
+    #[test]
+    fn vectalab_hifi_presets_match_reference_values() {
+        let figma = trace_settings_for_preset(QualityPreset::Figma);
+        assert_eq!(figma.mode, TraceMode::Spline);
+        assert_eq!(figma.filter_speckle, 4);
+        assert_eq!(figma.path_precision, 5);
+        assert_eq!(figma.optimizer_precision, 1);
+
+        let balanced = trace_settings_for_preset(QualityPreset::Balanced);
+        assert_eq!(balanced.filter_speckle, 2);
+        assert_eq!(balanced.layer_difference, 8);
+        assert_eq!(balanced.max_iterations, 15);
+
+        let quality = trace_settings_for_preset(QualityPreset::Quality);
+        assert_eq!(quality.color_precision, 8);
+        assert_eq!(quality.layer_difference, 4);
+        assert_eq!(quality.path_precision, 8);
+
+        let ultra = trace_settings_for_preset(QualityPreset::Ultra);
+        assert_eq!(ultra.mode, TraceMode::Polygon);
+        assert_eq!(ultra.filter_speckle, 0);
+        assert_eq!(ultra.layer_difference, 0);
+        assert_eq!(ultra.max_iterations, 50);
+        assert_eq!(ultra.path_precision, 10);
     }
 }

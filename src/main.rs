@@ -25,14 +25,14 @@ enum Commands {
     Convert {
         input: PathBuf,
         output: Option<PathBuf>,
-        #[arg(long, default_value_t = 0.92)]
+        #[arg(long, default_value_t = 0.998)]
         target_ssim: f64,
         #[arg(long, default_value_t = 100_000)]
         max_file_size: usize,
-        #[arg(long, default_value_t = 5)]
+        #[arg(long, default_value_t = 1)]
         max_iterations: usize,
-        #[arg(long, value_enum)]
-        quality: Option<QualityPreset>,
+        #[arg(long, value_enum, default_value_t = QualityPreset::Ultra)]
+        quality: QualityPreset,
         #[arg(long)]
         json: bool,
     },
@@ -56,14 +56,14 @@ enum Commands {
         input_dir: PathBuf,
         #[arg(long)]
         output_dir: PathBuf,
-        #[arg(long, default_value_t = 0.92)]
+        #[arg(long, default_value_t = 0.998)]
         target_ssim: f64,
         #[arg(long, default_value_t = 100_000)]
         max_file_size: usize,
-        #[arg(long, default_value_t = 5)]
+        #[arg(long, default_value_t = 1)]
         max_iterations: usize,
-        #[arg(long, value_enum)]
-        quality: Option<QualityPreset>,
+        #[arg(long, value_enum, default_value_t = QualityPreset::Ultra)]
+        quality: QualityPreset,
         #[arg(long)]
         json_path: Option<PathBuf>,
         #[arg(long)]
@@ -88,7 +88,7 @@ fn main() -> Result<()> {
                 target_ssim,
                 max_file_size,
                 max_iterations,
-                quality,
+                quality: Some(quality),
             };
             let (svg, report) = vectorize(&input, &options)?;
             write_svg(&output, &svg)?;
@@ -158,7 +158,7 @@ fn main() -> Result<()> {
                 target_ssim,
                 max_file_size,
                 max_iterations,
-                quality,
+                quality: Some(quality),
             };
             let report = benchmark_directory(&input_dir, &output_dir, &options)?;
             if let Some(path) = json_path {

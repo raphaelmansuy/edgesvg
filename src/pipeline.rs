@@ -5,11 +5,8 @@ use image::RgbaImage;
 use vtracer::ColorImage;
 
 use crate::analysis::analyze_image;
-use crate::metrics::{compute_metrics, QualityMetrics};
-use crate::preprocess::{
-    adaptive_trace_settings, count_unique_colors, preprocess_image, quantize_image,
-    to_vtracer_config,
-};
+use crate::metrics::compute_metrics;
+use crate::preprocess::{to_vtracer_config, trace_settings_for_preset};
 use crate::svg::optimize_svg;
 use crate::types::{QualityPreset, VectorizationReport};
 
@@ -24,10 +21,10 @@ pub struct VectorizeOptions {
 impl Default for VectorizeOptions {
     fn default() -> Self {
         Self {
-            target_ssim: 0.92,
+            target_ssim: 0.998,
             max_file_size: 100_000,
-            max_iterations: 5,
-            quality: None,
+            max_iterations: 1,
+            quality: Some(QualityPreset::Balanced),
         }
     }
 }
@@ -39,58 +36,27 @@ pub fn vectorize(
     let original = image::open(input_path)
         .with_context(|| format!("unable to open image {}", input_path.display()))?;
     let analysis = analyze_image(&original);
+    let quality = options.quality.unwrap_or_default();
+    let settings = trace_settings_for_preset(quality);
+    let svg = trace_image(&original.to_rgba8(), &settings)?;
+    let svg = optimize_svg(&svg, settings.optimizer_precision);
+    let metrics = compute_metrics(&original, &svg)?;
 
-    let mut candidate = preprocess_image(&original, &analysis, None)?;
-    let ladder = if let Some(quality) = options.quality {
-        vec![quality; options.max_iterations.max(1)]
-    } else {
-        (0..options.max_iterations.max(1))
-            .map(|index| {
-                QualityPreset::ordered_for_iterations()
-                    .get(index)
-                    .copied()
-                    .unwrap_or(QualityPreset::Quality)
-            })
-            .collect::<Vec<_>>()
-    };
+    let _ = (
+        options.target_ssim,
+        options.max_file_size,
+        options.max_iterations,
+    );
 
-    let mut best: Option<(String, VectorizationReport, f64)> = None;
-
-    for (index, quality) in ladder.into_iter().enumerate() {
-        let settings = adaptive_trace_settings(&analysis, quality);
-        let svg = trace_image(&candidate, &settings)?;
-        let svg = optimize_svg(&svg, settings.path_precision);
-        let metrics = compute_metrics(&original, &svg)?;
-        let score = score_metrics(&metrics, options.max_file_size);
-
-        let report = VectorizationReport {
-            analysis: analysis.clone(),
+    Ok((
+        svg,
+        VectorizationReport {
+            analysis,
             settings,
             quality_preset: quality,
-            metrics: metrics.clone(),
-        };
-
-        if best
-            .as_ref()
-            .map(|(_, _, best_score)| score > *best_score)
-            .unwrap_or(true)
-        {
-            best = Some((svg.clone(), report.clone(), score));
-        }
-
-        if metrics.ssim >= options.target_ssim && metrics.file_size <= options.max_file_size {
-            return Ok((svg, report));
-        }
-
-        if metrics.file_size > options.max_file_size && index + 1 < options.max_iterations {
-            let current_colors = count_unique_colors(&candidate);
-            let next_colors = ((current_colors as f64) * 0.7).round().max(4.0) as usize;
-            candidate = quantize_image(&candidate, next_colors);
-        }
-    }
-
-    best.map(|(svg, report, _)| (svg, report))
-        .ok_or_else(|| anyhow!("vectorization did not produce a candidate"))
+            metrics,
+        },
+    ))
 }
 
 pub fn write_svg(output_path: &Path, svg: &str) -> Result<()> {
@@ -112,15 +78,6 @@ fn trace_image(image: &RgbaImage, settings: &crate::types::TraceSettings) -> Res
     Ok(svg.to_string())
 }
 
-fn score_metrics(metrics: &QualityMetrics, max_file_size: usize) -> f64 {
-    let size_score = if metrics.file_size < max_file_size * 3 {
-        (1.0 - metrics.file_size as f64 / max_file_size as f64).max(0.0)
-    } else {
-        -1.0
-    };
-    metrics.ssim * 0.7 + size_score * 0.3
-}
-
 pub fn vectorize_logo(
     input_path: &Path,
     target_size_kb: usize,
@@ -128,10 +85,10 @@ pub fn vectorize_logo(
     vectorize(
         input_path,
         &VectorizeOptions {
-            target_ssim: 0.90,
+            target_ssim: 0.98,
             max_file_size: target_size_kb * 1024,
-            max_iterations: 5,
-            quality: None,
+            max_iterations: 1,
+            quality: Some(QualityPreset::Ultra),
         },
     )
 }
@@ -140,10 +97,10 @@ pub fn vectorize_icon(input_path: &Path) -> Result<(String, VectorizationReport)
     vectorize(
         input_path,
         &VectorizeOptions {
-            target_ssim: 0.92,
+            target_ssim: 0.998,
             max_file_size: 100_000,
-            max_iterations: 4,
-            quality: None,
+            max_iterations: 1,
+            quality: Some(QualityPreset::Ultra),
         },
     )
 }
