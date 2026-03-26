@@ -99,11 +99,31 @@ pub fn determine_auto_mode(input_path: &Path) -> Result<AutoDecision> {
 }
 
 pub fn vectorize_auto(input_path: &Path) -> Result<(String, VectorizationReport)> {
-    let decision = determine_auto_mode(input_path)?;
-    match decision.mode {
-        AutoMode::Logo => vectorize_logo_premium(input_path, decision.logo_quality, None),
-        AutoMode::Premium => vectorize_premium(input_path, 0.98, None),
+    let mut outcomes = Vec::new();
+
+    if let Ok((svg, report)) = vectorize_logo_premium(input_path, LogoQualityPreset::Ultra, None) {
+        outcomes.push(("logo_ultra", svg, report));
     }
+    if let Ok((svg, report)) = vectorize_logo_premium(input_path, LogoQualityPreset::Clean, None) {
+        outcomes.push(("logo_clean", svg, report));
+    }
+    if let Ok((svg, report)) = vectorize_premium(input_path, 0.95, Some(32)) {
+        outcomes.push(("premium_photo", svg, report));
+    }
+    if let Ok((svg, report)) = vectorize_smart(input_path, 0.95, 100_000, 4) {
+        outcomes.push(("smart", svg, report));
+    }
+
+    let winner = outcomes
+        .into_iter()
+        .max_by(|left, right| {
+            auto_score(&left.2)
+                .partial_cmp(&auto_score(&right.2))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .context("auto vectorization produced no successful candidate")?;
+
+    Ok((winner.1, winner.2))
 }
 
 pub fn vectorize_logo_premium(
@@ -206,6 +226,89 @@ pub fn vectorize_premium(
     }
 
     let (svg, report, _) = best.context("premium vectorization produced no candidate")?;
+    Ok((svg, report))
+}
+
+pub fn vectorize_optimal(input_path: &Path) -> Result<(String, VectorizationReport)> {
+    let original = image::open(input_path)
+        .with_context(|| format!("unable to open image {}", input_path.display()))?;
+    let analysis = analyze_image(&original);
+    let mut candidate = preprocess_image(&original, &analysis, None)?;
+    candidate = DynamicImage::ImageRgba8(candidate).blur(0.4).to_rgba8();
+    candidate = DynamicImage::ImageRgba8(candidate)
+        .unsharpen(1.0, 1)
+        .to_rgba8();
+
+    let settings = trace_settings_for_preset(QualityPreset::Quality);
+    let svg = trace_to_svg(&candidate, &settings)?;
+    let svg = snap_svg_colors(&svg);
+    let svg = optimize_svg(&svg, settings.optimizer_precision);
+    let metrics = compute_metrics(&original, &svg)?;
+
+    Ok((
+        svg,
+        VectorizationReport {
+            analysis,
+            settings,
+            quality_preset: QualityPreset::Quality,
+            metrics,
+        },
+    ))
+}
+
+pub fn vectorize_smart(
+    input_path: &Path,
+    target_ssim: f64,
+    max_file_size: usize,
+    max_iterations: usize,
+) -> Result<(String, VectorizationReport)> {
+    let original = image::open(input_path)
+        .with_context(|| format!("unable to open image {}", input_path.display()))?;
+    let analysis = analyze_image(&original);
+    let mut candidate = preprocess_image(&original, &analysis, None)?;
+    let ladder = [
+        QualityPreset::Figma,
+        QualityPreset::Balanced,
+        QualityPreset::Quality,
+    ];
+
+    let mut best: Option<(String, VectorizationReport, f64)> = None;
+    for iteration in 0..max_iterations.max(1) {
+        let quality = ladder[iteration.min(ladder.len() - 1)];
+        let settings = trace_settings_for_preset(quality);
+        let mut svg = trace_to_svg(&candidate, &settings)?;
+        if !matches!(analysis.image_type, ImageKind::Photo) {
+            svg = snap_svg_colors(&svg);
+        }
+        let svg = optimize_svg(&svg, settings.optimizer_precision);
+        let metrics = compute_metrics(&original, &svg)?;
+        let report = VectorizationReport {
+            analysis: analysis.clone(),
+            settings,
+            quality_preset: quality,
+            metrics: metrics.clone(),
+        };
+        let score = smart_score(&report, max_file_size);
+
+        if best
+            .as_ref()
+            .map(|(_, _, best_score)| score > *best_score)
+            .unwrap_or(true)
+        {
+            best = Some((svg.clone(), report.clone(), score));
+        }
+
+        if metrics.ssim >= target_ssim && metrics.file_size <= max_file_size {
+            return Ok((svg, report));
+        }
+
+        if metrics.file_size > max_file_size {
+            let reduced_colors = ((count_unique_colors_rgba(&candidate) as f64) * 0.7) as usize;
+            candidate = quantize_image(&candidate, reduced_colors.clamp(4, 256));
+        }
+    }
+
+    let (svg, report, _) = best.context("smart vectorization produced no candidate")?;
     Ok((svg, report))
 }
 
@@ -359,6 +462,20 @@ fn color_distance(a: (u8, u8, u8), b: (u8, u8, u8)) -> f64 {
     (dr * dr + dg * dg + db * db).sqrt()
 }
 
+fn smart_score(report: &VectorizationReport, max_file_size: usize) -> f64 {
+    let file_size = report.metrics.file_size as f64;
+    let size_score = if file_size < (max_file_size as f64 * 3.0) {
+        (1.0 - file_size / max_file_size.max(1) as f64).max(0.0)
+    } else {
+        -1.0
+    };
+    report.metrics.ssim * 0.7 + size_score * 0.3
+}
+
+fn auto_score(report: &VectorizationReport) -> f64 {
+    report.metrics.ssim * 100.0 - (report.metrics.file_size as f64 / 1024.0 / 100.0)
+}
+
 fn average_rgb(colors: &[[u8; 3]]) -> (f64, f64, f64) {
     let len = colors.len().max(1) as f64;
     let mut sum = (0.0, 0.0, 0.0);
@@ -401,7 +518,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        determine_auto_mode, is_monochrome_icon, vectorize_logo_premium, vectorize_premium,
+        determine_auto_mode, is_monochrome_icon, vectorize_auto, vectorize_logo_premium,
+        vectorize_optimal, vectorize_premium, vectorize_smart,
     };
     use crate::types::{AutoMode, LogoQualityPreset};
 
@@ -469,6 +587,15 @@ mod tests {
 
         let (premium_svg, _) = vectorize_premium(&path, 0.9, Some(2)).unwrap();
         assert!(premium_svg.contains("<svg"));
+
+        let (smart_svg, _) = vectorize_smart(&path, 0.9, 100_000, 3).unwrap();
+        assert!(smart_svg.contains("<svg"));
+
+        let (optimal_svg, _) = vectorize_optimal(&path).unwrap();
+        assert!(optimal_svg.contains("<svg"));
+
+        let (auto_svg, _) = vectorize_auto(&path).unwrap();
+        assert!(auto_svg.contains("<svg"));
 
         fs::remove_file(path).ok();
     }

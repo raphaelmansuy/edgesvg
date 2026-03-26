@@ -3,8 +3,8 @@ use std::path::Path;
 use edgesvg::{
     analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics,
     determine_auto_mode, optimize_svg, preprocess_image, quantize_image, vectorize, vectorize_auto,
-    vectorize_logo_premium, vectorize_premium, AutoMode, LogoQualityPreset, QualityPreset,
-    VectorizeOptions,
+    vectorize_logo_premium, vectorize_optimal, vectorize_premium, vectorize_smart, AutoMode,
+    LogoQualityPreset, QualityPreset, VectorizeOptions,
 };
 use image::{DynamicImage, Rgba, RgbaImage};
 use tempfile::tempdir;
@@ -143,6 +143,14 @@ fn higher_level_api_handles_logo_premium_and_auto_modes() {
     let (auto_svg, auto_report) = vectorize_auto(&icon).unwrap();
     assert!(auto_svg.contains("<svg"));
     assert!(auto_report.metrics.path_count > 0);
+
+    let (smart_svg, smart_report) = vectorize_smart(&logo, 0.9, 100_000, 3).unwrap();
+    assert!(smart_svg.contains("<svg"));
+    assert!(smart_report.metrics.ssim >= 0.0);
+
+    let (optimal_svg, optimal_report) = vectorize_optimal(&logo).unwrap();
+    assert!(optimal_svg.contains("<svg"));
+    assert!(optimal_report.metrics.path_count > 0);
 }
 
 #[test]

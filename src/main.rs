@@ -5,8 +5,9 @@ use clap::{Parser, Subcommand, ValueEnum};
 use edgesvg::metrics::render_svg_file_to_png;
 use edgesvg::{
     analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics,
-    determine_auto_mode, vectorize, vectorize_auto, vectorize_logo_premium, vectorize_premium,
-    write_svg, LogoQualityPreset, QualityPreset, VectorizeOptions,
+    determine_auto_mode, vectorize, vectorize_auto, vectorize_logo_premium, vectorize_optimal,
+    vectorize_premium, vectorize_smart, write_svg, LogoQualityPreset, QualityPreset,
+    VectorizeOptions,
 };
 use serde::Serialize;
 use serde_json::json;
@@ -222,6 +223,18 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    Smart {
+        input: PathBuf,
+        output: Option<PathBuf>,
+        #[arg(long = "quality", alias = "target-ssim", default_value_t = 0.92)]
+        target_ssim: f64,
+        #[arg(long = "size", default_value_t = 100)]
+        target_size_kb: usize,
+        #[arg(long = "iterations", default_value_t = 5)]
+        max_iterations: usize,
+        #[arg(long)]
+        json: bool,
+    },
     Info {
         input: PathBuf,
         #[arg(long)]
@@ -306,7 +319,7 @@ fn main() -> Result<()> {
         } => {
             let output = output.unwrap_or_else(|| input.with_extension("svg"));
             let (svg, report, fallback_from) = match method {
-                ConvertMethod::Hifi | ConvertMethod::Smart => {
+                ConvertMethod::Hifi => {
                     let options = VectorizeOptions {
                         target_ssim,
                         max_file_size,
@@ -316,21 +329,39 @@ fn main() -> Result<()> {
                     let (svg, report) = vectorize(&input, &options)?;
                     (svg, report, None)
                 }
+                ConvertMethod::Smart => {
+                    let (svg, report) =
+                        vectorize_smart(&input, target_ssim, max_file_size, max_iterations)?;
+                    (svg, report, None)
+                }
                 ConvertMethod::Logo => {
                     let (svg, report) =
                         vectorize_logo_premium(&input, logo_quality_from_quality(quality), colors)?;
                     (svg, report, None)
                 }
-                ConvertMethod::Premium | ConvertMethod::Optimal => {
+                ConvertMethod::Premium => {
                     let (svg, report) = vectorize_premium(&input, target_ssim, colors)?;
+                    (svg, report, None)
+                }
+                ConvertMethod::Optimal => {
+                    let (svg, report) = vectorize_optimal(&input)?;
                     (svg, report, None)
                 }
                 ConvertMethod::Auto => {
                     let (svg, report) = vectorize_auto(&input)?;
                     (svg, report, None)
                 }
-                ConvertMethod::Bayesian | ConvertMethod::Sam => {
-                    let (svg, report) = vectorize_premium(&input, target_ssim, colors)?;
+                ConvertMethod::Bayesian => {
+                    let (svg, report) = vectorize_smart(
+                        &input,
+                        target_ssim.max(0.95),
+                        max_file_size,
+                        max_iterations.max(5),
+                    )?;
+                    (svg, report, None)
+                }
+                ConvertMethod::Sam => {
+                    let (svg, report) = vectorize_auto(&input)?;
                     (svg, report, Some(method))
                 }
             };
@@ -430,6 +461,30 @@ fn main() -> Result<()> {
                     "wrote {} | mode={:?} ssim={:.4} size={:.1}KB paths={}",
                     output.display(),
                     decision.mode,
+                    report.metrics.ssim,
+                    report.metrics.file_size as f64 / 1024.0,
+                    report.metrics.path_count
+                );
+            }
+        }
+        Commands::Smart {
+            input,
+            output,
+            target_ssim,
+            target_size_kb,
+            max_iterations,
+            json,
+        } => {
+            let output = output.unwrap_or_else(|| input.with_extension("svg"));
+            let (svg, report) =
+                vectorize_smart(&input, target_ssim, target_size_kb * 1024, max_iterations)?;
+            write_svg(&output, &svg)?;
+            if json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "wrote {} | mode=smart ssim={:.4} size={:.1}KB paths={}",
+                    output.display(),
                     report.metrics.ssim,
                     report.metrics.file_size as f64 / 1024.0,
                     report.metrics.path_count

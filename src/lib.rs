@@ -12,7 +12,7 @@ pub use analysis::analyze_image;
 pub use benchmark::{benchmark_directory, benchmark_golden_data, BenchmarkReport};
 pub use highlevel::{
     determine_auto_mode, is_monochrome_icon, vectorize_auto, vectorize_logo_premium,
-    vectorize_premium, AutoDecision,
+    vectorize_optimal, vectorize_premium, vectorize_smart, AutoDecision,
 };
 pub use metrics::{compute_metrics, render_svg_to_image, QualityMetrics};
 pub use pipeline::{vectorize, vectorize_icon, vectorize_logo, write_svg, VectorizeOptions};

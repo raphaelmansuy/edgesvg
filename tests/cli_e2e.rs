@@ -167,6 +167,7 @@ fn info_optimize_and_method_fallbacks_work_from_cli() {
     let dir = tempdir().unwrap();
     let input = dir.path().join("fixture.png");
     let svg = dir.path().join("fixture.svg");
+    let smart_svg = dir.path().join("smart.svg");
     write_fixture(&input);
     std::fs::write(
         &svg,
@@ -206,5 +207,31 @@ fn info_optimize_and_method_fallbacks_work_from_cli() {
         ])
         .assert()
         .success()
-        .stdout(contains("\"fallback_from\": \"bayesian\""));
+        .stdout(contains("\"requested_method\": \"bayesian\""));
+
+    Command::cargo_bin("edgesvg")
+        .unwrap()
+        .args([
+            "smart",
+            input.to_str().unwrap(),
+            smart_svg.to_str().unwrap(),
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("\"metrics\""));
+
+    Command::cargo_bin("edgesvg")
+        .unwrap()
+        .args([
+            "convert",
+            input.to_str().unwrap(),
+            dir.path().join("optimal.svg").to_str().unwrap(),
+            "--method",
+            "optimal",
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("\"requested_method\": \"optimal\""));
 }

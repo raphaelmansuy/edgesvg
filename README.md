@@ -19,7 +19,7 @@ EdgeSVG takes the practical middle ground:
 - native Rust runtime
 - in-process tracing via the vendored internal vectorizer
 - adaptive preprocessing by image type
-- premium and auto conversion flows modeled after the Python `vectalab` reference
+- smart, premium, and competitive auto flows modeled after the Python `vectalab` reference
 - built-in SVG rendering and scoring
 - reproducible benchmarks and CLI workflows
 
@@ -55,6 +55,9 @@ cargo build --release
 
 # Convert a raster image to SVG
 cargo run --release -- convert examples/test_logo_benchmark.png out.svg
+
+# Run the adaptive smart strategy
+cargo run --release -- smart examples/test_logo_benchmark.png out.smart.svg
 
 # Inspect the detected image profile
 cargo run --release -- analyze examples/test_logo_benchmark.png
@@ -102,6 +105,7 @@ println!("ssim={:.4} paths={}", report.metrics.ssim, report.metrics.path_count);
 | Command | Purpose |
 |---|---|
 | `convert` | Convert one raster image to SVG |
+| `smart` | Run the adaptive multi-pass native strategy search |
 | `info` | Inspect file metadata plus the recommended conversion strategy |
 | `analyze` | Inspect how EdgeSVG classifies the image |
 | `compare` | Score a raster input against an SVG output |
@@ -142,7 +146,7 @@ EdgeSVG ships three test layers:
 
 - Unit tests inside core modules for classification, preprocessing, and SVG minification behavior
 - Integration tests in `tests/library_api.rs` for the public library surface
-- End-to-end CLI tests in `tests/cli_e2e.rs` covering `convert`, `analyze`, `compare`, `render`, and `benchmark`
+- End-to-end CLI tests in `tests/cli_e2e.rs` covering `convert`, `smart`, `analyze`, `compare`, `render`, `optimize`, and `benchmark`
 
 Run everything with:
 

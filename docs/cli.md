@@ -15,9 +15,21 @@ Notes:
 
 - `quality` can be `figma`, `balanced`, `quality`, or `ultra`
 - `method` can be `hifi`, `logo`, `premium`, `auto`, `smart`, `optimal`, `bayesian`, or `sam`
-- Python-only `bayesian` and `sam` methods are routed to the best native Rust premium path and reported as fallbacks
+- native `smart`, `optimal`, and `bayesian` routes perform real strategy selection in Rust
+- `sam` remains a compatibility route and currently falls back to the native auto strategy
 - if no output is provided, the tool writes `INPUT.svg`
 - `--json` prints the full conversion report
+
+## Smart
+
+```bash
+cargo run --release -- smart INPUT.png [OUTPUT.svg] \
+  --quality 0.92 \
+  --size 100 \
+  --iterations 5
+```
+
+Runs the iterative native strategy search modeled after Python `vectalab.sota.vectorize_smart`.
 
 ## Info
 
