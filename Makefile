@@ -6,19 +6,22 @@ BIN := target/release/edgesvg
 GOLDEN_DIR := golden_data
 SAMPLE_LIMIT := 90
 SMOKE_LIMIT := 12
+OODA_LOOPS := 10
 
-.PHONY: help fmt test build bench-smoke bench-sample bench-full optimize-frontier clean-bench
+.DEFAULT_GOAL := help
+
+.PHONY: help fmt test build verify bench bench-smoke bench-sample bench-full optimize-frontier optimize-ooda clean-bench
 
 help:
 	@printf "\nEdgeSVG Workflow\n\n"
-	@printf "  %-18s %s\n" "make build" "Build release binary"
-	@printf "  %-18s %s\n" "make fmt" "Format Rust sources"
-	@printf "  %-18s %s\n" "make test" "Run full test suite"
-	@printf "  %-18s %s\n" "make bench-smoke" "Fast golden-data smoke benchmark"
-	@printf "  %-18s %s\n" "make bench-sample" "90-asset benchmark with baseline diff"
-	@printf "  %-18s %s\n" "make bench-full" "Full golden-data benchmark"
-	@printf "  %-18s %s\n" "make optimize-frontier" "Run bounded optimization sweep"
-	@printf "  %-18s %s\n\n" "make clean-bench" "Remove generated benchmark artifacts"
+	@printf "  %-20s %s\n" "make verify" "fmt + test"
+	@printf "  %-20s %s\n" "make build" "Build release binary"
+	@printf "  %-20s %s\n" "make bench" "Alias for make bench-sample"
+	@printf "  %-20s %s\n" "make bench-smoke" "Fast 12-asset golden benchmark"
+	@printf "  %-20s %s\n" "make bench-sample" "Main 90-asset benchmark with diff"
+	@printf "  %-20s %s\n" "make bench-full" "Full golden-data verification"
+	@printf "  %-20s %s\n" "make optimize-frontier" "10-loop OODA optimization sweep"
+	@printf "  %-20s %s\n\n" "make clean-bench" "Remove generated benchmark artifacts"
 
 fmt:
 	$(CARGO) fmt --all
@@ -26,8 +29,12 @@ fmt:
 test:
 	$(CARGO) test
 
+verify: fmt test
+
 build:
 	$(CARGO) build --release
+
+bench: bench-sample
 
 bench-smoke: build
 	$(PYTHON) scripts/benchmark_suite.py \
@@ -53,7 +60,10 @@ optimize-frontier: build
 	$(PYTHON) scripts/optimize_frontier.py \
 		--bin $(BIN) \
 		--golden-dir $(GOLDEN_DIR) \
-		--limit $(SAMPLE_LIMIT)
+		--limit $(SAMPLE_LIMIT) \
+		--loops $(OODA_LOOPS)
+
+optimize-ooda: optimize-frontier
 
 clean-bench:
 	rm -rf benchmark_runs/golden_smoke \

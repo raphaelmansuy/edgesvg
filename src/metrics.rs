@@ -8,6 +8,12 @@ pub struct QualityMetrics {
     pub ssim: f64,
     pub ssim_perceptual: f64,
     pub edge_similarity: f64,
+    pub edge_precision: f64,
+    pub edge_recall: f64,
+    pub edge_f1: f64,
+    pub foreground_iou: f64,
+    pub color_similarity: f64,
+    pub fidelity_score: f64,
     pub delta_e: f64,
     pub topology_score: f64,
     pub psnr: f64,
@@ -61,12 +67,34 @@ pub fn compute_metrics(original: &DynamicImage, svg: &str) -> Result<QualityMetr
         10.0 * ((255.0 * 255.0) / mse).log10()
     };
 
+    let ssim = compute_ssim(&original_gray, &rendered_gray);
+    let ssim_perceptual = compute_ssim(&original_blurred_gray, &rendered_blurred_gray);
+    let edge = edge_metrics(&original, &rendered);
+    let delta_e = average_delta_e(&original, &rendered);
+    let color_similarity = (1.0 - (delta_e / 40.0).min(1.0)).clamp(0.0, 1.0);
+    let foreground_iou = foreground_iou(&original, &rendered);
+    let topology_score = topology_score(&original, &rendered);
+    let fidelity_score = (ssim * 0.28
+        + ssim_perceptual * 0.17
+        + edge.f1 * 0.18
+        + edge.iou * 0.12
+        + foreground_iou * 0.10
+        + color_similarity * 0.10
+        + topology_score * 0.05)
+        .clamp(0.0, 1.0);
+
     Ok(QualityMetrics {
-        ssim: ssim(&original_gray, &rendered_gray),
-        ssim_perceptual: ssim(&original_blurred_gray, &rendered_blurred_gray),
-        edge_similarity: edge_similarity(&original, &rendered),
-        delta_e: average_delta_e(&original, &rendered),
-        topology_score: topology_score(&original, &rendered),
+        ssim,
+        ssim_perceptual,
+        edge_similarity: edge.iou,
+        edge_precision: edge.precision,
+        edge_recall: edge.recall,
+        edge_f1: edge.f1,
+        foreground_iou,
+        color_similarity,
+        fidelity_score,
+        delta_e,
+        topology_score,
         psnr,
         mae,
         file_size: svg.as_bytes().len(),
@@ -130,7 +158,7 @@ fn luma(pixel: &Rgba<u8>) -> f64 {
     0.299 * f64::from(channels[0]) + 0.587 * f64::from(channels[1]) + 0.114 * f64::from(channels[2])
 }
 
-fn ssim(left: &[f64], right: &[f64]) -> f64 {
+fn compute_ssim(left: &[f64], right: &[f64]) -> f64 {
     let n = left.len().min(right.len());
     if n == 0 {
         return 0.0;
@@ -161,7 +189,14 @@ fn ssim(left: &[f64], right: &[f64]) -> f64 {
     value.clamp(0.0, 1.0)
 }
 
-fn edge_similarity(left: &RgbaImage, right: &RgbaImage) -> f64 {
+struct EdgeMetrics {
+    iou: f64,
+    precision: f64,
+    recall: f64,
+    f1: f64,
+}
+
+fn edge_metrics(left: &RgbaImage, right: &RgbaImage) -> EdgeMetrics {
     let left_edges = detect_edges(left);
     let right_edges = detect_edges(right);
     let left_edges = dilate_binary(&left_edges, left.width(), left.height());
@@ -169,6 +204,8 @@ fn edge_similarity(left: &RgbaImage, right: &RgbaImage) -> f64 {
 
     let mut intersection = 0usize;
     let mut union = 0usize;
+    let mut predicted = 0usize;
+    let mut reference = 0usize;
     for (a, b) in left_edges.iter().zip(right_edges.iter()) {
         if *a || *b {
             union += 1;
@@ -176,11 +213,39 @@ fn edge_similarity(left: &RgbaImage, right: &RgbaImage) -> f64 {
         if *a && *b {
             intersection += 1;
         }
+        if *b {
+            predicted += 1;
+        }
+        if *a {
+            reference += 1;
+        }
     }
-    if union == 0 {
+    let iou = if union == 0 {
         1.0
     } else {
         intersection as f64 / union as f64
+    };
+    let precision = if predicted == 0 {
+        1.0
+    } else {
+        intersection as f64 / predicted as f64
+    };
+    let recall = if reference == 0 {
+        1.0
+    } else {
+        intersection as f64 / reference as f64
+    };
+    let f1 = if precision + recall == 0.0 {
+        0.0
+    } else {
+        2.0 * precision * recall / (precision + recall)
+    };
+
+    EdgeMetrics {
+        iou,
+        precision,
+        recall,
+        f1,
     }
 }
 
@@ -260,6 +325,26 @@ fn threshold_foreground(image: &RgbaImage) -> Vec<bool> {
             luminance < 250.0
         })
         .collect()
+}
+
+fn foreground_iou(left: &RgbaImage, right: &RgbaImage) -> f64 {
+    let left_mask = threshold_foreground(left);
+    let right_mask = threshold_foreground(right);
+    let mut intersection = 0usize;
+    let mut union = 0usize;
+    for (a, b) in left_mask.iter().zip(right_mask.iter()) {
+        if *a || *b {
+            union += 1;
+        }
+        if *a && *b {
+            intersection += 1;
+        }
+    }
+    if union == 0 {
+        1.0
+    } else {
+        intersection as f64 / union as f64
+    }
 }
 
 fn count_components(binary: &[bool], width: u32, height: u32, target: bool) -> usize {

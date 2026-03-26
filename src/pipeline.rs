@@ -5,7 +5,7 @@ use image::{Rgba, RgbaImage};
 
 use crate::analysis::analyze_image;
 use crate::metrics::compute_metrics;
-use crate::preprocess::trace_settings_for_preset;
+use crate::preprocess::{adaptive_trace_settings, preprocess_image};
 use crate::svg::optimize_svg;
 use crate::types::{Complexity, ImageAnalysis, ImageKind, QualityPreset, VectorizationReport};
 use crate::vectorizer::trace_to_svg;
@@ -35,18 +35,21 @@ pub fn vectorize(
 ) -> Result<(String, VectorizationReport)> {
     let original = image::open(input_path)
         .with_context(|| format!("unable to open image {}", input_path.display()))?;
-    let flattened = flatten_transparency_to_white(&original.to_rgba8());
-    let flattened_image = image::DynamicImage::ImageRgba8(flattened.clone());
+    let source_image = image::DynamicImage::ImageRgba8(original.to_rgba8());
+    let flattened = flatten_transparency_to_white(&source_image.to_rgba8());
+    let flattened_image = image::DynamicImage::ImageRgba8(flattened);
     let analysis = analyze_image(&flattened_image);
+    let trace_input = trace_candidate_image(&source_image, &flattened_image, &analysis)?;
     let qualities = quality_search_order(
+        &analysis,
         options.quality.unwrap_or_default(),
         options.max_iterations.max(1),
     );
 
     let mut best: Option<(String, VectorizationReport, f64)> = None;
     for quality in qualities {
-        let settings = trace_settings_for_preset(quality);
-        let svg = trace_image(&flattened, &settings)?;
+        let settings = adaptive_trace_settings(&analysis, quality);
+        let svg = trace_image(&trace_input, &settings)?;
         let svg = optimize_svg(&svg, settings.optimizer_precision);
         let metrics = compute_metrics(&original, &svg)?;
         let report = VectorizationReport {
@@ -101,25 +104,72 @@ fn flatten_transparency_to_white(image: &RgbaImage) -> RgbaImage {
     out
 }
 
-fn quality_search_order(start: QualityPreset, max_iterations: usize) -> Vec<QualityPreset> {
-    let ladder = [
-        QualityPreset::Figma,
-        QualityPreset::Balanced,
-        QualityPreset::Quality,
-        QualityPreset::Ultra,
-    ];
-    let start_idx = ladder
-        .iter()
-        .position(|preset| *preset == start)
-        .unwrap_or(0);
+fn trace_candidate_image(
+    source: &image::DynamicImage,
+    flattened: &image::DynamicImage,
+    analysis: &ImageAnalysis,
+) -> Result<RgbaImage> {
+    if matches!(analysis.image_type, ImageKind::Photo) {
+        Ok(flatten_transparency_to_white(&source.to_rgba8()))
+    } else if has_substantial_transparency(source)
+        && matches!(analysis.image_type, ImageKind::Logo | ImageKind::Icon)
+    {
+        Ok(source.to_rgba8())
+    } else {
+        preprocess_image(flattened, analysis, None)
+    }
+}
+
+fn has_substantial_transparency(image: &image::DynamicImage) -> bool {
+    let rgba = image.to_rgba8();
+    let total = (rgba.width() as usize * rgba.height() as usize).max(1);
+    let transparent = rgba.pixels().filter(|pixel| pixel[3] < 250).count();
+    transparent as f64 / total as f64 > 0.05
+}
+
+fn quality_search_order(
+    analysis: &ImageAnalysis,
+    start: QualityPreset,
+    max_iterations: usize,
+) -> Vec<QualityPreset> {
+    let preferred = match (analysis.image_type, analysis.complexity) {
+        (ImageKind::Logo, _) | (ImageKind::Icon, Complexity::Simple | Complexity::Medium) => {
+            vec![
+                QualityPreset::Figma,
+                QualityPreset::Balanced,
+                QualityPreset::Quality,
+                QualityPreset::Ultra,
+            ]
+        }
+        (ImageKind::Icon, Complexity::Complex) | (ImageKind::Illustration, Complexity::Simple) => {
+            vec![
+                QualityPreset::Balanced,
+                QualityPreset::Quality,
+                QualityPreset::Figma,
+                QualityPreset::Ultra,
+            ]
+        }
+        (ImageKind::Illustration, _) | (ImageKind::Photo, Complexity::Simple) => vec![
+            QualityPreset::Quality,
+            QualityPreset::Balanced,
+            QualityPreset::Ultra,
+            QualityPreset::Figma,
+        ],
+        (ImageKind::Photo, _) => vec![
+            QualityPreset::Quality,
+            QualityPreset::Ultra,
+            QualityPreset::Balanced,
+            QualityPreset::Figma,
+        ],
+    };
+
     let mut order = Vec::new();
-    for preset in ladder.iter().skip(start_idx) {
-        order.push(*preset);
+    for preset in std::iter::once(start).chain(preferred.into_iter()) {
+        if !order.contains(&preset) {
+            order.push(preset);
+        }
     }
-    for preset in ladder.iter().take(start_idx).rev() {
-        order.push(*preset);
-    }
-    order.truncate(max_iterations.min(ladder.len()));
+    order.truncate(max_iterations.min(4));
     order
 }
 
@@ -129,6 +179,8 @@ fn candidate_score(
     max_file_size: usize,
 ) -> f64 {
     let (target_size, target_paths) = complexity_budget(analysis);
+    let fidelity_floor = fidelity_floor(analysis);
+    let edge_floor = edge_floor(analysis);
     let oversize_penalty = if metrics.file_size > max_file_size {
         let oversize = (metrics.file_size - max_file_size) as f64 / max_file_size.max(1) as f64;
         oversize.ln_1p() * 0.25
@@ -137,16 +189,15 @@ fn candidate_score(
     };
     let size_penalty = excess_penalty(metrics.file_size as f64, target_size) * 0.12;
     let path_penalty = excess_penalty(metrics.path_count as f64, target_paths) * 0.18;
-    let color_score = (1.0 - (metrics.delta_e / 40.0).min(1.0)).clamp(0.0, 1.0);
+    let fidelity_penalty = (fidelity_floor - metrics.fidelity_score).max(0.0) * 0.45;
+    let edge_penalty = (edge_floor - metrics.edge_f1).max(0.0) * 0.25;
 
-    metrics.ssim * 0.42
-        + metrics.ssim_perceptual * 0.18
-        + metrics.edge_similarity * 0.18
-        + metrics.topology_score * 0.12
-        + color_score * 0.10
+    metrics.fidelity_score
         - size_penalty
         - path_penalty
         - oversize_penalty
+        - fidelity_penalty
+        - edge_penalty
 }
 
 fn excess_penalty(actual: f64, target: f64) -> f64 {
@@ -168,6 +219,30 @@ fn complexity_budget(analysis: &ImageAnalysis) -> (f64, f64) {
         (ImageKind::Photo, Complexity::Simple) => (16_000.0, 48.0),
         (ImageKind::Photo, Complexity::Medium) => (24_000.0, 96.0),
         (ImageKind::Photo, Complexity::Complex) => (32_000.0, 144.0),
+    }
+}
+
+fn fidelity_floor(analysis: &ImageAnalysis) -> f64 {
+    match (analysis.image_type, analysis.complexity) {
+        (ImageKind::Logo, Complexity::Simple) => 0.92,
+        (ImageKind::Logo, _) => 0.90,
+        (ImageKind::Icon, Complexity::Simple | Complexity::Medium) => 0.89,
+        (ImageKind::Icon, Complexity::Complex) => 0.87,
+        (ImageKind::Illustration, Complexity::Simple) => 0.87,
+        (ImageKind::Illustration, Complexity::Medium) => 0.85,
+        (ImageKind::Illustration, Complexity::Complex) => 0.83,
+        (ImageKind::Photo, Complexity::Simple) => 0.82,
+        (ImageKind::Photo, Complexity::Medium) => 0.80,
+        (ImageKind::Photo, Complexity::Complex) => 0.78,
+    }
+}
+
+fn edge_floor(analysis: &ImageAnalysis) -> f64 {
+    match analysis.image_type {
+        ImageKind::Logo => 0.90,
+        ImageKind::Icon => 0.88,
+        ImageKind::Illustration => 0.84,
+        ImageKind::Photo => 0.78,
     }
 }
 
@@ -210,8 +285,32 @@ mod tests {
 
     #[test]
     fn quality_search_starts_at_requested_preset_and_climbs() {
+        let icon_analysis = ImageAnalysis {
+            width: 24,
+            height: 24,
+            unique_colors: 8,
+            top_10_coverage: 0.98,
+            top_50_coverage: 1.0,
+            color_variance: 20.0,
+            edge_density: 0.1,
+            dominant_colors: vec!["#000000".to_string()],
+            image_type: ImageKind::Icon,
+            complexity: Complexity::Medium,
+        };
+        let photo_analysis = ImageAnalysis {
+            width: 640,
+            height: 480,
+            unique_colors: 4_096,
+            top_10_coverage: 0.18,
+            top_50_coverage: 0.28,
+            color_variance: 92.0,
+            edge_density: 0.24,
+            dominant_colors: vec!["#000000".to_string()],
+            image_type: ImageKind::Photo,
+            complexity: Complexity::Complex,
+        };
         assert_eq!(
-            quality_search_order(QualityPreset::Figma, 4),
+            quality_search_order(&icon_analysis, QualityPreset::Figma, 4),
             vec![
                 QualityPreset::Figma,
                 QualityPreset::Balanced,
@@ -220,11 +319,20 @@ mod tests {
             ]
         );
         assert_eq!(
-            quality_search_order(QualityPreset::Balanced, 3),
+            quality_search_order(&icon_analysis, QualityPreset::Balanced, 3),
             vec![
                 QualityPreset::Balanced,
+                QualityPreset::Figma,
+                QualityPreset::Quality
+            ]
+        );
+        assert_eq!(
+            quality_search_order(&photo_analysis, QualityPreset::Quality, 4),
+            vec![
                 QualityPreset::Quality,
-                QualityPreset::Ultra
+                QualityPreset::Ultra,
+                QualityPreset::Balanced,
+                QualityPreset::Figma
             ]
         );
     }
@@ -279,6 +387,12 @@ mod tests {
             ssim: 0.88,
             ssim_perceptual: 0.92,
             edge_similarity: 0.95,
+            edge_precision: 0.96,
+            edge_recall: 0.94,
+            edge_f1: 0.95,
+            foreground_iou: 0.93,
+            color_similarity: 0.78,
+            fidelity_score: 0.89,
             delta_e: 9.0,
             topology_score: 1.0,
             psnr: 16.0,
@@ -290,6 +404,12 @@ mod tests {
             ssim: 0.91,
             ssim_perceptual: 0.94,
             edge_similarity: 0.96,
+            edge_precision: 0.97,
+            edge_recall: 0.95,
+            edge_f1: 0.96,
+            foreground_iou: 0.94,
+            color_similarity: 0.80,
+            fidelity_score: 0.90,
             delta_e: 8.0,
             topology_score: 1.0,
             psnr: 17.0,
