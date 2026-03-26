@@ -50,14 +50,14 @@ fn analyze_convert_compare_render_and_benchmark_work_from_cli() {
     let report_md = dir.path().join("report.md");
     write_fixture(&input);
 
-    Command::cargo_bin("vectalab")
+    Command::cargo_bin("edgesvg")
         .unwrap()
         .args(["analyze", input.to_str().unwrap(), "--json"])
         .assert()
         .success()
         .stdout(contains("\"image_type\": \"logo\""));
 
-    Command::cargo_bin("vectalab")
+    Command::cargo_bin("edgesvg")
         .unwrap()
         .args([
             "convert",
@@ -69,7 +69,7 @@ fn analyze_convert_compare_render_and_benchmark_work_from_cli() {
         .success()
         .stdout(contains("\"metrics\""));
 
-    Command::cargo_bin("vectalab")
+    Command::cargo_bin("edgesvg")
         .unwrap()
         .args([
             "compare",
@@ -81,7 +81,7 @@ fn analyze_convert_compare_render_and_benchmark_work_from_cli() {
         .success()
         .stdout(contains("\"ssim\""));
 
-    Command::cargo_bin("vectalab")
+    Command::cargo_bin("edgesvg")
         .unwrap()
         .args(["render", svg.to_str().unwrap(), png.to_str().unwrap()])
         .assert()
@@ -89,7 +89,7 @@ fn analyze_convert_compare_render_and_benchmark_work_from_cli() {
         .stdout(contains("wrote"));
     assert!(png.exists());
 
-    Command::cargo_bin("vectalab")
+    Command::cargo_bin("edgesvg")
         .unwrap()
         .args([
             "benchmark",
@@ -121,7 +121,7 @@ fn logo_premium_and_auto_commands_work_from_cli() {
     write_fixture(&logo_input);
     write_transparent_icon(&icon_input);
 
-    Command::cargo_bin("vectalab")
+    Command::cargo_bin("edgesvg")
         .unwrap()
         .args([
             "logo",
@@ -133,7 +133,7 @@ fn logo_premium_and_auto_commands_work_from_cli() {
         .success()
         .stdout(contains("\"metrics\""));
 
-    Command::cargo_bin("vectalab")
+    Command::cargo_bin("edgesvg")
         .unwrap()
         .args([
             "premium",
@@ -145,7 +145,7 @@ fn logo_premium_and_auto_commands_work_from_cli() {
         .success()
         .stdout(contains("\"metrics\""));
 
-    Command::cargo_bin("vectalab")
+    Command::cargo_bin("edgesvg")
         .unwrap()
         .args([
             "auto",
@@ -160,4 +160,51 @@ fn logo_premium_and_auto_commands_work_from_cli() {
     assert!(logo_svg.exists());
     assert!(premium_svg.exists());
     assert!(auto_svg.exists());
+}
+
+#[test]
+fn info_optimize_and_method_fallbacks_work_from_cli() {
+    let dir = tempdir().unwrap();
+    let input = dir.path().join("fixture.png");
+    let svg = dir.path().join("fixture.svg");
+    write_fixture(&input);
+    std::fs::write(
+        &svg,
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><path fill="#ff0000" opacity="1" d="M 0.1234 0.5678 L 9.8765 9.4321"/></svg>"##,
+    )
+    .unwrap();
+
+    Command::cargo_bin("edgesvg")
+        .unwrap()
+        .args(["info", input.to_str().unwrap(), "--json"])
+        .assert()
+        .success()
+        .stdout(contains("\"recommended\""));
+
+    Command::cargo_bin("edgesvg")
+        .unwrap()
+        .args([
+            "optimize",
+            svg.to_str().unwrap(),
+            "--json",
+            "--precision",
+            "1",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("\"reduction_percent\""));
+
+    Command::cargo_bin("edgesvg")
+        .unwrap()
+        .args([
+            "convert",
+            input.to_str().unwrap(),
+            dir.path().join("bayesian.svg").to_str().unwrap(),
+            "--method",
+            "bayesian",
+            "--json",
+        ])
+        .assert()
+        .success()
+        .stdout(contains("\"fallback_from\": \"bayesian\""));
 }

@@ -1,6 +1,6 @@
 # Algorithm
 
-Vectalab uses a deliberately pragmatic pipeline.
+EdgeSVG uses a deliberately pragmatic pipeline that mirrors the Python `vectalab` conversion logic where it can be implemented natively in Rust.
 
 ## Conversion Flow
 
@@ -17,7 +17,7 @@ Vectalab uses a deliberately pragmatic pipeline.
    - photo
 4. Choose preprocessing and tracing settings from that class.
 5. Reduce palette complexity and apply light denoising where it helps.
-6. Trace with `vtracer`.
+6. Trace with the internal Rust vectorizer derived from `visioncortex` primitives.
 7. Minify SVG path data without collapsing document structure.
 8. Render the SVG back to pixels and compute quality metrics.
 9. Keep the best candidate under the configured fidelity and file size constraints.
@@ -36,6 +36,8 @@ The project does not try to be magical. It tries to be auditable:
 - `src/analysis.rs`
 - `src/preprocess.rs`
 - `src/pipeline.rs`
+- `src/highlevel.rs`
+- `src/vectorizer.rs`
 - `src/svg.rs`
 - `src/metrics.rs`
 - `src/benchmark.rs`

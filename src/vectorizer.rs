@@ -110,7 +110,7 @@ impl SvgFile {
 impl fmt::Display for SvgFile {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, r#"<?xml version="1.0" encoding="UTF-8"?>"#)?;
-        writeln!(f, r#"<!-- Generator: vectalab internal vectorizer -->"#)?;
+        writeln!(f, r#"<!-- Generator: edgesvg internal vectorizer -->"#)?;
         writeln!(
             f,
             r#"<svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="{}" height="{}">"#,

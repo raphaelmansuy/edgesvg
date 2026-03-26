@@ -207,7 +207,7 @@ mod tests {
     use crate::types::{LogoQualityPreset, QualityPreset, TraceMode};
 
     #[test]
-    fn vectalab_hifi_presets_match_reference_values() {
+    fn edgesvg_hifi_presets_match_reference_values() {
         let figma = trace_settings_for_preset(QualityPreset::Figma);
         assert_eq!(figma.mode, TraceMode::Spline);
         assert_eq!(figma.filter_speckle, 4);
@@ -233,7 +233,7 @@ mod tests {
     }
 
     #[test]
-    fn vectalab_logo_presets_match_reference_values() {
+    fn edgesvg_logo_presets_match_reference_values() {
         let clean = trace_settings_for_logo_preset(LogoQualityPreset::Clean);
         assert_eq!(clean.filter_speckle, 4);
         assert_eq!(clean.corner_threshold, 60);

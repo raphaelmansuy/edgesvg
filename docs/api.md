@@ -1,6 +1,6 @@
 # Rust API
 
-Vectalab is a library first and a CLI second. The public API is intentionally compact.
+EdgeSVG is a library first and a CLI second. The public API is intentionally compact.
 
 ## Main Entry Points
 
@@ -10,7 +10,7 @@ Convert one raster input into an SVG string plus a structured report.
 
 ```rust
 use std::path::Path;
-use vectalab::{vectorize, VectorizeOptions};
+use edgesvg::{vectorize, VectorizeOptions};
 
 let (svg, report) = vectorize(Path::new("examples/test_logo_benchmark.png"), &VectorizeOptions::default())?;
 println!("ssim={:.4}", report.metrics.ssim);
@@ -22,7 +22,7 @@ println!("ssim={:.4}", report.metrics.ssim);
 Tune the conversion loop.
 
 ```rust
-use vectalab::{QualityPreset, VectorizeOptions};
+use edgesvg::{QualityPreset, VectorizeOptions};
 
 let options = VectorizeOptions {
     target_ssim: 0.95,
@@ -38,7 +38,7 @@ Persist generated SVG content to disk.
 
 ```rust
 use std::path::Path;
-use vectalab::write_svg;
+use edgesvg::write_svg;
 
 write_svg(Path::new("out.svg"), "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>")?;
 # Ok::<(), anyhow::Error>(())
@@ -50,7 +50,7 @@ Inspect an image before conversion.
 
 ```rust
 let image = image::open("examples/test_logo_benchmark.png")?;
-let analysis = vectalab::analyze_image(&image);
+let analysis = edgesvg::analyze_image(&image);
 println!("{:?}", analysis.image_type);
 # Ok::<(), anyhow::Error>(())
 ```
@@ -62,7 +62,7 @@ Score an SVG against a raster source.
 ```rust
 let image = image::open("examples/test_logo_benchmark.png")?;
 let svg = std::fs::read_to_string("demo/output.svg")?;
-let metrics = vectalab::compute_metrics(&image, &svg)?;
+let metrics = edgesvg::compute_metrics(&image, &svg)?;
 println!("paths={}", metrics.path_count);
 # Ok::<(), anyhow::Error>(())
 ```
@@ -73,7 +73,7 @@ Batch-process a directory and collect a report.
 
 ```rust
 use std::path::Path;
-use vectalab::{benchmark_directory, VectorizeOptions};
+use edgesvg::{benchmark_directory, VectorizeOptions};
 
 let report = benchmark_directory(
     Path::new("examples"),

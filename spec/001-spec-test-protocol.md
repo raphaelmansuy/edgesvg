@@ -8,8 +8,8 @@ Our goal is to produce SVGs that are indistinguishable from source files created
 ## Quick Start
 
 ### Prerequisites
-- Vectalab installed: `pip install -e .`
-- Test data directories: `mkdir -p test_data/{svg_mono,svg_multi,png_mono,png_multi,vectalab_mono,vectalab_multi,reports}`
+- EdgeSVG Rust crate available locally for verification, plus the Python `vectalab` reference repo for parity checks
+- Test data directories: `mkdir -p test_data/{svg_mono,svg_multi,png_mono,png_multi,edgesvg_mono,edgesvg_multi,reports}`
 
 ### Standard Workflow
 ```bash
@@ -93,7 +93,7 @@ Implement the fix and verify.
 Test ONLY the problematic asset.
 ```bash
 # Use the specific logo command for best results
-vectalab logo test_data/png_multi/brand.png --quality ultra --colors 4
+edgesvg logo test_data/png_multi/brand.png --quality ultra --colors 4
 ```
 
 **Step 2: Regression Test**

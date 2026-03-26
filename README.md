@@ -1,9 +1,9 @@
-# Vectalab
+# EdgeSVG
 
 [![Rust](https://img.shields.io/badge/rust-1.82%2B-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Vectalab is a native Rust CLI and library for turning raster graphics into compact, high-fidelity SVGs.
+EdgeSVG is a native Rust CLI and library for turning raster graphics into compact, high-fidelity SVGs.
 
 The goal is simple: make PNG and JPG to vector conversion fast, reproducible, scriptable, and good enough that open-source users stop needing a black-box commercial tool for the common cases.
 
@@ -14,11 +14,12 @@ Most raster-to-vector tooling falls into one of two traps:
 - It is fast, but the output is noisy, oversized, or hard to trust.
 - It is quality-focused, but wrapped in a heavy stack that is difficult to install, test, and automate.
 
-Vectalab takes the practical middle ground:
+EdgeSVG takes the practical middle ground:
 
 - native Rust runtime
-- in-process tracing via `vtracer`
+- in-process tracing via the vendored internal vectorizer
 - adaptive preprocessing by image type
+- premium and auto conversion flows modeled after the Python `vectalab` reference
 - built-in SVG rendering and scoring
 - reproducible benchmarks and CLI workflows
 
@@ -84,12 +85,12 @@ cargo install --path .
 
 ```toml
 [dependencies]
-vectalab = "0.2"
+edgesvg = "0.2"
 ```
 
 ```rust
 use std::path::Path;
-use vectalab::{vectorize, VectorizeOptions};
+use edgesvg::{vectorize, VectorizeOptions};
 
 let (svg, report) = vectorize(Path::new("examples/test_logo_benchmark.png"), &VectorizeOptions::default())?;
 println!("ssim={:.4} paths={}", report.metrics.ssim, report.metrics.path_count);
@@ -101,10 +102,13 @@ println!("ssim={:.4} paths={}", report.metrics.ssim, report.metrics.path_count);
 | Command | Purpose |
 |---|---|
 | `convert` | Convert one raster image to SVG |
-| `analyze` | Inspect how Vectalab classifies the image |
+| `info` | Inspect file metadata plus the recommended conversion strategy |
+| `analyze` | Inspect how EdgeSVG classifies the image |
 | `compare` | Score a raster input against an SVG output |
 | `render` | Render SVG to PNG for previewing |
+| `optimize` | Minify an existing SVG with the built-in optimizer |
 | `benchmark` | Batch-convert a directory and emit reports |
+| `benchmark-golden` | Reproduce the imported golden-data benchmark corpus |
 
 Detailed usage lives in [docs/cli.md](docs/cli.md).
 
@@ -116,7 +120,7 @@ The shipped pipeline is intentionally narrow and auditable:
 2. Analyze color coverage, color variance, and edge density.
 3. Choose preprocessing and tracing settings from the detected image class.
 4. Quantize and lightly denoise before tracing.
-5. Trace with `vtracer`.
+5. Trace with the internal Rust vectorizer.
 6. Minify path data without breaking SVG structure.
 7. Render the SVG back and compute quality metrics.
 8. Keep the best candidate under the configured constraints.
@@ -126,13 +130,15 @@ The implementation is in:
 - [src/analysis.rs](src/analysis.rs)
 - [src/preprocess.rs](src/preprocess.rs)
 - [src/pipeline.rs](src/pipeline.rs)
+- [src/highlevel.rs](src/highlevel.rs)
+- [src/vectorizer.rs](src/vectorizer.rs)
 - [src/svg.rs](src/svg.rs)
 - [src/metrics.rs](src/metrics.rs)
 - [src/benchmark.rs](src/benchmark.rs)
 
 ## Test Strategy
 
-Vectalab ships three test layers:
+EdgeSVG ships three test layers:
 
 - Unit tests inside core modules for classification, preprocessing, and SVG minification behavior
 - Integration tests in `tests/library_api.rs` for the public library surface

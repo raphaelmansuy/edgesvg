@@ -1,13 +1,13 @@
 use std::path::Path;
 
-use image::{DynamicImage, Rgba, RgbaImage};
-use tempfile::tempdir;
-use vectalab::{
+use edgesvg::{
     analyze_image, benchmark_directory, benchmark_golden_data, compute_metrics,
     determine_auto_mode, optimize_svg, preprocess_image, quantize_image, vectorize, vectorize_auto,
     vectorize_logo_premium, vectorize_premium, AutoMode, LogoQualityPreset, QualityPreset,
     VectorizeOptions,
 };
+use image::{DynamicImage, Rgba, RgbaImage};
+use tempfile::tempdir;
 
 fn sample_image() -> DynamicImage {
     let mut image = RgbaImage::new(96, 96);

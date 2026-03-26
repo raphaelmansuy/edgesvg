@@ -1,6 +1,17 @@
 # Benchmarks
 
-Vectalab ships a native benchmark runner instead of the old Python scripts.
+EdgeSVG ships a native benchmark runner instead of the old Python scripts, and it can replay the imported `golden_data/` corpus directly from Rust.
+
+## Golden Corpus
+
+```bash
+cargo run --release -- benchmark-golden \
+  --golden-dir golden_data \
+  --work-dir benchmark_runs/golden_full \
+  --quality figma \
+  --json-path benchmark_runs/golden_full/report.json \
+  --markdown-path benchmark_runs/golden_full/report.md
+```
 
 ## Run
 

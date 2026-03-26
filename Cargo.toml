@@ -1,14 +1,14 @@
 [package]
-name = "vectalab"
+name = "edgesvg"
 version = "0.2.0"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
 description = "Native Rust raster-to-SVG toolkit for high-fidelity PNG and JPG vectorization"
 readme = "README.md"
-homepage = "https://github.com/raphaelmansuy/vectalab"
-repository = "https://github.com/raphaelmansuy/vectalab"
-documentation = "https://docs.rs/vectalab"
+homepage = "https://github.com/raphaelmansuy/edgesvg"
+repository = "https://github.com/raphaelmansuy/edgesvg"
+documentation = "https://docs.rs/edgesvg"
 keywords = ["svg", "vectorization", "png", "graphics", "cli"]
 categories = ["graphics", "multimedia::images", "command-line-utilities"]
 include = ["src/**", "tests/**", "examples/**", "docs/**", "demo/**", "golden_data/**", "research/**", "spec/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CONTRIBUTING.md"]

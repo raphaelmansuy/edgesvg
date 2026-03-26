@@ -1,6 +1,6 @@
 # CI And Publishing
 
-Vectalab is structured as a standard publishable Rust crate.
+EdgeSVG is structured as a standard publishable Rust crate.
 
 ## Local Verification
 

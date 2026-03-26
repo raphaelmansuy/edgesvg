@@ -34,7 +34,7 @@ cargo run --release -- benchmark \
 
 ```rust
 use std::path::Path;
-use vectalab::{vectorize, write_svg, VectorizeOptions};
+use edgesvg::{vectorize, write_svg, VectorizeOptions};
 
 let (svg, report) = vectorize(
     Path::new("examples/test_logo_benchmark.png"),
