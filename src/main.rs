@@ -185,7 +185,7 @@ enum Commands {
         target_ssim: f64,
         #[arg(long, default_value_t = 100_000)]
         max_file_size: usize,
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 4)]
         max_iterations: usize,
         #[arg(long, value_enum, default_value_t = QualityPreset::Ultra)]
         quality: QualityPreset,
@@ -272,7 +272,7 @@ enum Commands {
         target_ssim: f64,
         #[arg(long, default_value_t = 100_000)]
         max_file_size: usize,
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 4)]
         max_iterations: usize,
         #[arg(long, value_enum, default_value_t = QualityPreset::Ultra)]
         quality: QualityPreset,
@@ -290,7 +290,7 @@ enum Commands {
         target_ssim: f64,
         #[arg(long, default_value_t = 100_000)]
         max_file_size: usize,
-        #[arg(long, default_value_t = 1)]
+        #[arg(long, default_value_t = 4)]
         max_iterations: usize,
         #[arg(long, value_enum, default_value_t = QualityPreset::Figma)]
         quality: QualityPreset,
