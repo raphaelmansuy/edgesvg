@@ -1,0 +1,38 @@
+[package]
+name = "vectalab"
+version = "0.2.0"
+edition = "2021"
+rust-version = "1.82"
+license = "MIT"
+description = "Native Rust raster-to-SVG toolkit for high-fidelity PNG and JPG vectorization"
+readme = "README.md"
+homepage = "https://github.com/raphaelmansuy/vectalab"
+repository = "https://github.com/raphaelmansuy/vectalab"
+documentation = "https://docs.rs/vectalab"
+keywords = ["svg", "vectorization", "png", "graphics", "cli"]
+categories = ["graphics", "multimedia::images", "command-line-utilities"]
+include = ["src/**", "tests/**", "examples/**", "docs/**", "demo/**", "Cargo.toml", "Cargo.lock", "README.md", "LICENSE", "CONTRIBUTING.md"]
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.6", features = ["derive"] }
+exoquant = "0.2"
+image = "0.25"
+regex = "1.12"
+resvg = "0.47"
+roxmltree = "0.20"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+visioncortex = "0.8.10"
+vtracer = "0.6.5"
+walkdir = "2.5"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.1"
+tempfile = "3.15"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

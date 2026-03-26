@@ -1,0 +1,24 @@
+# Rust build output
+/target/
+
+# Generated local artifacts
+/benchmark_runs/
+/demo/output.svg
+/demo/output.png
+
+# Coverage and profiling
+*.profraw
+*.profdata
+coverage/
+
+# Tooling caches
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Temp files
+*.tmp
+*.temp
+*.log
+tmp/
