@@ -7,7 +7,7 @@ use regex::Regex;
 use serde::Serialize;
 
 use crate::analysis::analyze_image;
-use crate::metrics::compute_metrics;
+use crate::metrics::{compute_metrics, compute_metrics_against, PreparedMetricsInput};
 use crate::preprocess::{
     build_monochrome_alpha_mask, preprocess_image, quantize_image, trace_settings_for_logo_preset,
     trace_settings_for_preset, MONOCHROME_MASK_ALPHA_THRESHOLD,
@@ -227,12 +227,13 @@ pub fn vectorize_premium_image(
     };
 
     let mut best = None;
+    let prepared_metrics = PreparedMetricsInput::from_image(original);
     for quality in ladder {
         let settings = trace_settings_for_preset(quality);
         let svg = trace_to_svg(&candidate, &settings)?;
         let svg = snap_svg_colors(&svg);
         let svg = optimize_svg(&svg, settings.optimizer_precision);
-        let metrics = compute_metrics(original, &svg)?;
+        let metrics = compute_metrics_against(&prepared_metrics, &svg)?;
         let score =
             metrics.ssim * 0.6 + metrics.ssim_perceptual * 0.2 + metrics.edge_similarity * 0.2;
         let report = VectorizationReport {
@@ -319,6 +320,7 @@ pub fn vectorize_smart_image(
     ];
 
     let mut best: Option<(String, VectorizationReport, f64)> = None;
+    let prepared_metrics = PreparedMetricsInput::from_image(original);
     for iteration in 0..max_iterations.max(1) {
         let quality = ladder[iteration.min(ladder.len() - 1)];
         let settings = trace_settings_for_preset(quality);
@@ -327,7 +329,7 @@ pub fn vectorize_smart_image(
             svg = snap_svg_colors(&svg);
         }
         let svg = optimize_svg(&svg, settings.optimizer_precision);
-        let metrics = compute_metrics(original, &svg)?;
+        let metrics = compute_metrics_against(&prepared_metrics, &svg)?;
         let report = VectorizationReport {
             analysis: analysis.clone(),
             settings,

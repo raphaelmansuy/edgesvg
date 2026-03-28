@@ -6,11 +6,9 @@ BIN := target/release/edgesvg
 GOLDEN_DIR := golden_data
 SAMPLE_LIMIT := 90
 SMOKE_LIMIT := 12
-OODA_LOOPS := 50
-
 .DEFAULT_GOAL := help
 
-.PHONY: help fmt test build verify verify-all python-sdk node-sdk wasm-sdk bench bench-smoke bench-sample bench-full optimize-frontier optimize-ooda clean-bench
+.PHONY: help fmt test build verify verify-all python-sdk node-sdk wasm-sdk bench bench-smoke bench-sample bench-full clean-bench demo-build demo
 
 help:
 	@printf "\nEdgeSVG Workflow\n\n"
@@ -20,11 +18,12 @@ help:
 	@printf "  %-20s %s\n" "make python-sdk" "Build and test the Python package"
 	@printf "  %-20s %s\n" "make node-sdk" "Build and test the Node.js package"
 	@printf "  %-20s %s\n" "make wasm-sdk" "Check the WASM crate"
+	@printf "  %-20s %s\n" "make demo-build" "Rebuild WASM and install demo deps"
+	@printf "  %-20s %s\n" "make demo" "Rebuild WASM and launch demo dev server"
 	@printf "  %-20s %s\n" "make bench" "Alias for make bench-sample"
 	@printf "  %-20s %s\n" "make bench-smoke" "Fast 12-asset golden benchmark"
 	@printf "  %-20s %s\n" "make bench-sample" "Main 90-asset benchmark with diff"
 	@printf "  %-20s %s\n" "make bench-full" "Full golden-data verification"
-	@printf "  %-20s %s\n" "make optimize-frontier" "10-loop OODA optimization sweep"
 	@printf "  %-20s %s\n\n" "make clean-bench" "Remove generated benchmark artifacts"
 
 fmt:
@@ -71,17 +70,14 @@ bench-full: build
 		--bin $(BIN) \
 		--golden-dir $(GOLDEN_DIR)
 
-optimize-frontier: build
-	$(PYTHON) scripts/optimize_frontier.py \
-		--bin $(BIN) \
-		--golden-dir $(GOLDEN_DIR) \
-		--limit $(SAMPLE_LIMIT) \
-		--loops $(OODA_LOOPS)
-
-optimize-ooda: optimize-frontier
-
 clean-bench:
 	rm -rf benchmark_runs/golden_smoke \
 		benchmark_runs/golden_sample \
-		benchmark_runs/golden_full \
-		benchmark_runs/optimization_frontier
+		benchmark_runs/golden_full
+
+demo-build:
+	wasm-pack build crates/edgesvg-wasm --target web --out-dir ../../demo/wasm-pkg
+	cd demo && npm install
+
+demo: demo-build
+	cd demo && npm run dev

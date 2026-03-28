@@ -24,7 +24,9 @@ pub fn preprocess_image(
         ImageKind::Photo => DynamicImage::ImageRgba8(processed).blur(0.8).to_rgba8(),
     };
 
-    if matches!(analysis.image_type, ImageKind::Logo | ImageKind::Icon) {
+    if matches!(analysis.image_type, ImageKind::Logo | ImageKind::Icon)
+        && !preserve_crisp_geometry(analysis)
+    {
         processed = DynamicImage::ImageRgba8(processed).blur(0.35).to_rgba8();
     }
 
@@ -141,6 +143,18 @@ pub fn adaptive_trace_settings(analysis: &ImageAnalysis, quality: QualityPreset)
         settings.color_mode = "binary";
         settings.layer_difference = 0;
         settings.filter_speckle = settings.filter_speckle.min(1);
+    }
+
+    if preserve_crisp_geometry(analysis) {
+        settings.mode = TraceMode::Polygon;
+        settings.filter_speckle = settings.filter_speckle.min(1);
+        settings.color_precision = settings.color_precision.max(7);
+        settings.layer_difference = settings.layer_difference.min(4);
+        settings.length_threshold = settings.length_threshold.min(2.5);
+        settings.corner_threshold = settings.corner_threshold.min(20);
+        settings.max_iterations = settings.max_iterations.max(20);
+        settings.splice_threshold = settings.splice_threshold.min(30);
+        settings.path_precision = settings.path_precision.max(7);
     }
 
     settings
@@ -292,6 +306,22 @@ fn should_trace_as_binary(analysis: &ImageAnalysis) -> bool {
         && analysis.top_10_coverage >= 0.95
 }
 
+fn preserve_crisp_geometry(analysis: &ImageAnalysis) -> bool {
+    let opaque_diagram_like = analysis.alpha_coverage >= 0.98
+        && analysis.effective_colors <= 96
+        && analysis.top_50_coverage >= 0.80
+        && analysis.color_variance <= 95.0
+        && (0.006..=0.22).contains(&analysis.edge_density);
+    let sparse_diagram_like = analysis.is_sparse_diagram_like();
+    let crisp_logo_or_icon = matches!(analysis.image_type, ImageKind::Logo | ImageKind::Icon)
+        && analysis.effective_colors <= 32
+        && analysis.top_50_coverage >= 0.90
+        && analysis.color_variance <= 70.0
+        && analysis.edge_density >= 0.015;
+
+    opaque_diagram_like || sparse_diagram_like || crisp_logo_or_icon
+}
+
 #[cfg(test)]
 mod tests {
     use image::RgbaImage;
@@ -369,6 +399,52 @@ mod tests {
         let settings = adaptive_trace_settings(&analysis, QualityPreset::Balanced);
         assert_eq!(settings.color_mode, "binary");
         assert_eq!(settings.layer_difference, 0);
+    }
+
+    #[test]
+    fn crisp_geometry_switches_to_polygon_settings() {
+        let analysis = ImageAnalysis {
+            width: 512,
+            height: 512,
+            unique_colors: 64,
+            effective_colors: 20,
+            top_10_coverage: 0.76,
+            top_50_coverage: 0.96,
+            color_variance: 42.0,
+            edge_density: 0.07,
+            alpha_coverage: 1.0,
+            dominant_colors: vec!["#000000".to_string()],
+            image_type: ImageKind::Illustration,
+            complexity: Complexity::Medium,
+        };
+
+        let settings = adaptive_trace_settings(&analysis, QualityPreset::Balanced);
+        assert_eq!(settings.mode, TraceMode::Polygon);
+        assert_eq!(settings.layer_difference, 4);
+        assert_eq!(settings.corner_threshold, 20);
+    }
+
+    #[test]
+    fn sparse_transparent_diagram_switches_to_polygon_settings() {
+        let analysis = ImageAnalysis {
+            width: 512,
+            height: 512,
+            unique_colors: 160,
+            effective_colors: 48,
+            top_10_coverage: 0.84,
+            top_50_coverage: 0.98,
+            color_variance: 72.0,
+            edge_density: 0.08,
+            alpha_coverage: 0.22,
+            dominant_colors: vec!["#000000".to_string()],
+            image_type: ImageKind::Illustration,
+            complexity: Complexity::Medium,
+        };
+
+        let settings = adaptive_trace_settings(&analysis, QualityPreset::Balanced);
+        assert_eq!(settings.mode, TraceMode::Polygon);
+        assert_eq!(settings.layer_difference, 4);
+        assert_eq!(settings.corner_threshold, 20);
     }
 
     #[test]

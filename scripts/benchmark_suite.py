@@ -95,12 +95,15 @@ def print_report(report: dict) -> None:
     print("Overall")
     print(line("-"))
     print(
-        "entries={entries} fidelity={fidelity:.4f} ssim={ssim:.4f} psnr={psnr:.2f} mae={mae:.2f} "
+        "entries={entries} reliability={reliability:.4f} efficiency={efficiency:.4f} fidelity={fidelity:.4f} ssim={ssim:.4f} local_ssim_p10={local_ssim_p10:.4f} psnr={psnr:.2f} mae={mae:.2f} "
         "grad={gradient:.4f} edge_iou={edge:.4f} edge_f1={edge_f1:.4f} fg_iou={fg_iou:.4f} color={color:.4f} "
         "topo={topo:.4f} size={size} paths={paths:.1f} time={time:.1f}ms ips={ips:.2f}".format(
             entries=len(report["entries"]),
+            reliability=report.get("average_reliability_score", 0.0),
+            efficiency=report.get("average_efficiency_score", 0.0),
             fidelity=report["average_fidelity_score"],
             ssim=report["average_ssim"],
+            local_ssim_p10=report.get("average_local_ssim_p10", 0.0),
             gradient=report.get("average_gradient_similarity", 0.0),
             psnr=report["average_psnr"],
             mae=report["average_mae"],
@@ -124,22 +127,49 @@ def print_report(report: dict) -> None:
     )
     if "robust_benchmark_score" in report:
         print(f"robust_score={report['robust_benchmark_score']:.4f}")
+    if "dataset_health_score" in report:
+        print(f"dataset_health={report['dataset_health_score']:.4f}")
+    if (
+        "balanced_group_score" in report
+        or "balanced_subgroup_score" in report
+        or "balanced_kind_complexity_score" in report
+    ):
+        print(
+            "balanced_scores groups={groups:.4f} subgroups={subgroups:.4f} kind_complexity={kind_complexity:.4f}".format(
+                groups=report.get("balanced_group_score", 0.0),
+                subgroups=report.get("balanced_subgroup_score", 0.0),
+                kind_complexity=report.get("balanced_kind_complexity_score", 0.0),
+            )
+        )
     if "quality_gates" in report:
         gates = report["quality_gates"]
         print(
-            "gate_failures fidelity<0.75={f075} fidelity<0.85={f085} edge<0.75={e075} "
-            "edge<0.85={e085} color<0.75={c075} topo<0.50={t050}".format(
+            "gate_failures fidelity<0.75={f075} fidelity<0.85={f085} local_ssim_p10<0.75={l075} edge<0.75={e075} "
+            "edge<0.85={e085} color<0.75={c075} topo<0.50={t050} reliability<0.80={r080} "
+            "efficiency<0.50={x050} size_budget={size_budget} path_budget={path_budget}".format(
                 f075=gates.get("fidelity_below_0_75", 0),
                 f085=gates.get("fidelity_below_0_85", 0),
+                l075=gates.get("local_ssim_p10_below_0_75", 0),
                 e075=gates.get("edge_f1_below_0_75", 0),
                 e085=gates.get("edge_f1_below_0_85", 0),
                 c075=gates.get("color_below_0_75", 0),
                 t050=gates.get("topology_below_0_50", 0),
+                r080=gates.get("reliability_below_0_80", 0),
+                x050=gates.get("efficiency_below_0_50", 0),
+                size_budget=gates.get("size_budget_failures", 0),
+                path_budget=gates.get("path_budget_failures", 0),
             )
         )
     dataset = report.get("dataset", {})
     if dataset.get("groups"):
         print("dataset_groups=" + ", ".join(f"{item['label']}:{item['entries']}" for item in dataset["groups"]))
+    if dataset.get("reference_complexities"):
+        print(
+            "dataset_source_complexity="
+            + ", ".join(
+                f"{item['label']}:{item['entries']}" for item in dataset["reference_complexities"]
+            )
+        )
     if dataset.get("kind_complexities"):
         print(
             "dataset_mix="
@@ -151,13 +181,16 @@ def print_report(report: dict) -> None:
     print(line("-"))
     for group in report["groups"]:
         print(
-            "{group:14s} entries={entries:3d} fidelity={fidelity:.4f} ssim={ssim:.4f} "
+            "{group:14s} entries={entries:3d} reliability={reliability:.4f} efficiency={efficiency:.4f} fidelity={fidelity:.4f} ssim={ssim:.4f} local_ssim_p10={local_ssim_p10:.4f} "
             "grad={gradient:.4f} edge_f1={edge_f1:.4f} color={color:.4f} size={size:>8s} "
             "paths={paths:5.1f} time={time:6.1f}ms".format(
                 group=group["group"],
                 entries=group["entries"],
+                reliability=group.get("average_reliability_score", 0.0),
+                efficiency=group.get("average_efficiency_score", 0.0),
                 fidelity=group["average_fidelity_score"],
                 ssim=group["average_ssim"],
+                local_ssim_p10=group.get("average_local_ssim_p10", 0.0),
                 gradient=group.get("average_gradient_similarity", 0.0),
                 edge_f1=group["average_edge_f1"],
                 color=group["average_color_similarity"],
@@ -193,13 +226,20 @@ def print_delta(current: dict, baseline: dict) -> None:
     print("Delta vs Baseline")
     print(line("-"))
     metrics = [
+        ("average_reliability_score", "reliability", False),
+        ("average_efficiency_score", "efficiency", False),
         ("average_fidelity_score", "fidelity", False),
         ("average_ssim", "ssim", False),
+        ("average_local_ssim_p10", "local_ssim_p10", False),
         ("average_gradient_similarity", "gradient", False),
         ("average_edge_f1", "edge_f1", False),
         ("average_foreground_iou", "fg_iou", False),
         ("average_color_similarity", "color", False),
         ("robust_benchmark_score", "robust_score", False),
+        ("dataset_health_score", "dataset", False),
+        ("balanced_group_score", "group_score", False),
+        ("balanced_subgroup_score", "subgroup_score", False),
+        ("balanced_kind_complexity_score", "kindcx_score", False),
         ("average_psnr", "psnr", False),
         ("average_mae", "mae", True),
         ("average_file_size", "size_bytes", True),
@@ -311,6 +351,11 @@ def main() -> None:
     print(line("-"))
     print(f"json={json_path}")
     print(f"markdown={markdown_path}")
+    print(f"summary_dir={reports_dir / 'summary'}")
+    print(f"groups_dir={reports_dir / 'groups'}")
+    print(f"entries_dir={reports_dir / 'entries'}")
+    print(f"failures_dir={reports_dir / 'failures'}")
+    print(f"dataset_dir={reports_dir / 'dataset'}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,7 @@
+Source: OpenMoji color SVG set
+Repository: https://github.com/hfg-gmuend/openmoji
+Path: color/svg
+
+Selection notes:
+- 40 files sampled evenly from the upstream color SVG corpus
+- kept in a dedicated `openmoji` subgroup to widen illustration coverage

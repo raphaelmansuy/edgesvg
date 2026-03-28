@@ -1,24 +1,153 @@
 use regex::Regex;
-use roxmltree::Document;
 use std::collections::HashMap;
+use std::sync::OnceLock;
+
+fn path_attr_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"d="([^"]+)""#).expect("valid path attribute regex"))
+}
+
+fn num_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"-?\d*\.?\d+").expect("valid numeric regex"))
+}
+
+fn repeated_ws_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\s+").expect("valid repeated whitespace regex"))
+}
+
+fn cmd_space_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"([MmLlHhVvCcSsQqTtAaZz])\s+").expect("valid command spacing regex")
+    })
+}
+
+fn comma_space_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\s*,\s*").expect("valid comma spacing regex"))
+}
+
+fn paint_attr_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r#"(fill|stroke)="([^"]+)""#).expect("valid paint attribute regex")
+    })
+}
+
+fn rgb_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)").expect("valid rgb regex")
+    })
+}
+
+fn hex_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$").expect("valid hex regex")
+    })
+}
+
+fn removable_attrs_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r#"\s(?:id|class|style)="[^"]*""#).expect("valid removable attributes regex")
+    })
+}
+
+fn fill_opacity_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"\sfill-opacity="(?:1|1\.0)""#).expect("valid opacity regex"))
+}
+
+fn stroke_opacity_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"\sstroke-opacity="(?:1|1\.0)""#).expect("valid opacity regex"))
+}
+
+fn opacity_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"\sopacity="(?:1|1\.0)""#).expect("valid opacity regex"))
+}
+
+fn zero_translate_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r#"\stransform="translate\(0(?:\.0+)?,0(?:\.0+)?\)""#)
+            .expect("valid zero translate regex")
+    })
+}
+
+fn stroke_none_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"\sstroke="none""#).expect("valid stroke none attribute regex"))
+}
+
+fn path_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"<path\b([^>]*)/>"#).expect("valid self-closing path regex"))
+}
+
+fn d_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"\sd="([^"]*)""#).expect("valid d attribute regex"))
+}
+
+fn ns_prefix_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"ns\d+:").expect("valid namespace prefix regex"))
+}
+
+fn xmlns_ns_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r#"\sxmlns:ns\d+="[^"]*""#).expect("valid namespace declaration regex")
+    })
+}
+
+fn xml_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"<\?xml[^?]*\?>\s*"#).expect("valid xml declaration regex"))
+}
+
+fn comment_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"<!--.*?-->"#).expect("valid comment regex"))
+}
+
+fn between_tags_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#">\s+<"#).expect("valid between tags regex"))
+}
+
+fn space_self_close_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"\s+/>"#).expect("valid self close regex"))
+}
+
+fn space_close_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"\s+>"#).expect("valid closing tag spacing regex"))
+}
 
 pub fn optimize_svg(svg: &str, precision: u32) -> String {
-    let parsed = match Document::parse(svg) {
-        Ok(parsed) if parsed.root_element().has_tag_name("svg") => parsed,
-        _ => return svg.to_owned(),
-    };
+    if !svg.contains("<svg") || !svg.contains("</svg>") {
+        return svg.to_owned();
+    }
+    let has_namespace_artifacts = svg.contains("xmlns:ns") || ns_prefix_re().is_match(svg);
 
     let optimized = round_path_coordinates(svg, precision);
     let optimized = optimize_paint_attributes(&optimized);
     let optimized = merge_same_style_paths(&optimized);
     let optimized = remove_redundant_attributes(&optimized);
-    let optimized = clean_namespaces(&optimized, &parsed);
+    let optimized = clean_namespaces(&optimized, has_namespace_artifacts);
     final_cleanup(&optimized)
 }
 
 fn round_path_coordinates(svg: &str, precision: u32) -> String {
-    let path_attr_re = Regex::new(r#"d="([^"]+)""#).expect("valid path attribute regex");
-    path_attr_re
+    path_attr_re()
         .replace_all(svg, |caps: &regex::Captures<'_>| {
             let d = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
             format!(r#"d="{}""#, round_path_data(d, precision))
@@ -27,8 +156,7 @@ fn round_path_coordinates(svg: &str, precision: u32) -> String {
 }
 
 fn round_path_data(d: &str, precision: u32) -> String {
-    let num_re = Regex::new(r"-?\d*\.?\d+").expect("valid numeric regex");
-    let rounded = num_re
+    let rounded = num_re()
         .replace_all(d, |caps: &regex::Captures<'_>| {
             let value = caps
                 .get(0)
@@ -48,20 +176,13 @@ fn round_path_data(d: &str, precision: u32) -> String {
 }
 
 fn simplify_path_data(d: &str) -> String {
-    let repeated_ws = Regex::new(r"\s+").expect("valid repeated whitespace regex");
-    let cmd_space =
-        Regex::new(r"([MmLlHhVvCcSsQqTtAaZz])\s+").expect("valid command spacing regex");
-    let comma_space = Regex::new(r"\s*,\s*").expect("valid comma spacing regex");
-
-    let simplified = repeated_ws.replace_all(d.trim(), " ");
-    let simplified = cmd_space.replace_all(&simplified, "$1");
-    comma_space.replace_all(&simplified, ",").into_owned()
+    let simplified = repeated_ws_re().replace_all(d.trim(), " ");
+    let simplified = cmd_space_re().replace_all(&simplified, "$1");
+    comma_space_re().replace_all(&simplified, ",").into_owned()
 }
 
 fn optimize_paint_attributes(svg: &str) -> String {
-    let paint_attr_re =
-        Regex::new(r#"(fill|stroke)="([^"]+)""#).expect("valid paint attribute regex");
-    paint_attr_re
+    paint_attr_re()
         .replace_all(svg, |caps: &regex::Captures<'_>| {
             let attr = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
             let value = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
@@ -72,9 +193,7 @@ fn optimize_paint_attributes(svg: &str) -> String {
 
 fn optimize_color(color: &str) -> String {
     let mut color = color.trim().to_ascii_lowercase();
-    let rgb_re =
-        Regex::new(r"rgb\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)").expect("valid rgb regex");
-    if let Some(caps) = rgb_re.captures(&color) {
+    if let Some(caps) = rgb_re().captures(&color) {
         let parse = |index| {
             caps.get(index)
                 .and_then(|m| m.as_str().parse::<u8>().ok())
@@ -83,9 +202,7 @@ fn optimize_color(color: &str) -> String {
         color = format!("#{:02x}{:02x}{:02x}", parse(1), parse(2), parse(3));
     }
 
-    let hex_re =
-        Regex::new(r"^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$").expect("valid hex regex");
-    if let Some(caps) = hex_re.captures(&color) {
+    if let Some(caps) = hex_re().captures(&color) {
         let r = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
         let g = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
         let b = caps.get(3).map(|m| m.as_str()).unwrap_or_default();
@@ -112,31 +229,21 @@ fn optimize_color(color: &str) -> String {
 
 fn remove_redundant_attributes(svg: &str) -> String {
     let mut optimized = svg.to_owned();
-    let removable_attrs =
-        Regex::new(r#"\s(?:id|class|style)="[^"]*""#).expect("valid removable attributes regex");
-    optimized = removable_attrs.replace_all(&optimized, "").into_owned();
-
-    for attr in ["fill-opacity", "stroke-opacity", "opacity"] {
-        let pattern = format!(r#"\s{attr}="(?:1|1\.0)""#);
-        let attr_re = Regex::new(&pattern).expect("valid opacity regex");
-        optimized = attr_re.replace_all(&optimized, "").into_owned();
-    }
-
-    let zero_translate = Regex::new(r#"\stransform="translate\(0(?:\.0+)?,0(?:\.0+)?\)""#)
-        .expect("valid zero translate regex");
-    optimized = zero_translate.replace_all(&optimized, "").into_owned();
-
-    let stroke_none = Regex::new(r#"\sstroke="none""#).expect("valid stroke none attribute regex");
-    stroke_none.replace_all(&optimized, "").into_owned()
+    optimized = removable_attrs_re()
+        .replace_all(&optimized, "")
+        .into_owned();
+    optimized = fill_opacity_re().replace_all(&optimized, "").into_owned();
+    optimized = stroke_opacity_re().replace_all(&optimized, "").into_owned();
+    optimized = opacity_re().replace_all(&optimized, "").into_owned();
+    optimized = zero_translate_re().replace_all(&optimized, "").into_owned();
+    stroke_none_re().replace_all(&optimized, "").into_owned()
 }
 
 fn merge_same_style_paths(svg: &str) -> String {
-    let path_re = Regex::new(r#"<path\b([^>]*)/>"#).expect("valid self-closing path regex");
-    let d_re = Regex::new(r#"\sd="([^"]*)""#).expect("valid d attribute regex");
     let mut segments = Vec::new();
     let mut last_end = 0usize;
 
-    for caps in path_re.captures_iter(svg) {
+    for caps in path_re().captures_iter(svg) {
         let full = match caps.get(0) {
             Some(m) => m,
             None => continue,
@@ -145,9 +252,9 @@ fn merge_same_style_paths(svg: &str) -> String {
         if full.start() > last_end {
             segments.push(Segment::Text(svg[last_end..full.start()].to_string()));
         }
-        let style = d_re.replace(attrs, "").to_string();
+        let style = d_re().replace(attrs, "").to_string();
         let style = normalize_attr_whitespace(&style);
-        let d = d_re
+        let d = d_re()
             .captures(attrs)
             .and_then(|d_caps| d_caps.get(1).map(|m| m.as_str().to_string()))
             .unwrap_or_default();
@@ -203,7 +310,7 @@ fn merge_same_style_paths(svg: &str) -> String {
                         combined.join(" ")
                     })
                     .unwrap_or(d);
-                output.push_str(&d_re.replace(&raw, format!(r#" d="{}""#, merged_d)));
+                output.push_str(&d_re().replace(&raw, format!(r#" d="{}""#, merged_d)));
             }
         }
     }
@@ -212,8 +319,7 @@ fn merge_same_style_paths(svg: &str) -> String {
 }
 
 fn normalize_attr_whitespace(attrs: &str) -> String {
-    let repeated_ws = Regex::new(r"\s+").expect("valid repeated whitespace regex");
-    repeated_ws.replace_all(attrs.trim(), " ").into_owned()
+    repeated_ws_re().replace_all(attrs.trim(), " ").into_owned()
 }
 
 enum Segment {
@@ -225,15 +331,11 @@ enum Segment {
     },
 }
 
-fn clean_namespaces(svg: &str, parsed: &Document<'_>) -> String {
+fn clean_namespaces(svg: &str, has_namespace_artifacts: bool) -> String {
     let mut cleaned = svg.to_owned();
-    if parsed.root_element().tag_name().namespace().is_some() {
-        let ns_prefix_re = Regex::new(r"ns\d+:").expect("valid namespace prefix regex");
-        cleaned = ns_prefix_re.replace_all(&cleaned, "").into_owned();
-
-        let xmlns_ns_re =
-            Regex::new(r#"\sxmlns:ns\d+="[^"]*""#).expect("valid namespace declaration regex");
-        cleaned = xmlns_ns_re.replace_all(&cleaned, "").into_owned();
+    if has_namespace_artifacts {
+        cleaned = ns_prefix_re().replace_all(&cleaned, "").into_owned();
+        cleaned = xmlns_ns_re().replace_all(&cleaned, "").into_owned();
     }
 
     if !cleaned.contains("xmlns=") {
@@ -248,19 +350,12 @@ fn clean_namespaces(svg: &str, parsed: &Document<'_>) -> String {
 }
 
 fn final_cleanup(svg: &str) -> String {
-    let xml_re = Regex::new(r#"<\?xml[^?]*\?>\s*"#).expect("valid xml declaration regex");
-    let comment_re = Regex::new(r#"<!--.*?-->"#).expect("valid comment regex");
-    let repeated_ws = Regex::new(r#"\s+"#).expect("valid repeated whitespace regex");
-    let between_tags = Regex::new(r#">\s+<"#).expect("valid between tags regex");
-    let space_self_close = Regex::new(r#"\s+/>"#).expect("valid self close regex");
-    let space_close = Regex::new(r#"\s+>"#).expect("valid closing tag spacing regex");
-
-    let cleaned = xml_re.replace_all(svg, "");
-    let cleaned = comment_re.replace_all(&cleaned, "");
-    let cleaned = repeated_ws.replace_all(&cleaned, " ");
-    let cleaned = between_tags.replace_all(&cleaned, "><");
-    let cleaned = space_self_close.replace_all(&cleaned, "/>");
-    let cleaned = space_close.replace_all(&cleaned, ">");
+    let cleaned = xml_re().replace_all(svg, "");
+    let cleaned = comment_re().replace_all(&cleaned, "");
+    let cleaned = repeated_ws_re().replace_all(&cleaned, " ");
+    let cleaned = between_tags_re().replace_all(&cleaned, "><");
+    let cleaned = space_self_close_re().replace_all(&cleaned, "/>");
+    let cleaned = space_close_re().replace_all(&cleaned, ">");
     cleaned.trim().to_string()
 }
 

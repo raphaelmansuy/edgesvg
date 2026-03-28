@@ -91,6 +91,17 @@ pub struct ImageAnalysis {
     pub complexity: Complexity,
 }
 
+impl ImageAnalysis {
+    pub fn is_sparse_diagram_like(&self) -> bool {
+        self.alpha_coverage < 0.75
+            && self.effective_colors <= 128
+            && self.top_10_coverage >= 0.78
+            && self.top_50_coverage >= 0.94
+            && self.color_variance <= 110.0
+            && (0.008..=0.18).contains(&self.edge_density)
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct TraceSettings {
     pub color_mode: &'static str,

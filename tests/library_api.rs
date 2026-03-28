@@ -111,7 +111,9 @@ fn golden_benchmark_rasterizes_reference_svgs() {
     assert_eq!(report.entries[0].group, "sample.svg");
     assert_eq!(report.entries[0].reference.as_deref(), Some("sample.svg"));
     assert!(report.robust_benchmark_score >= 0.0);
-    assert!(work_dir.join("artifacts/rendered_inputs/sample.png").exists());
+    assert!(work_dir
+        .join("artifacts/rendered_inputs/sample.png")
+        .exists());
     assert!(work_dir.join("artifacts/vectorized/sample.svg").exists());
     assert!(work_dir.join("reports/dataset_manifest.json").exists());
 }

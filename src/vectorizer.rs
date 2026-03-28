@@ -4,7 +4,9 @@ use anyhow::{anyhow, Result};
 use fastrand::Rng;
 use image::RgbaImage;
 use visioncortex::color_clusters::{KeyingAction, Runner, RunnerConfig, HIERARCHICAL_MAX};
-use visioncortex::{Color, ColorImage, ColorName, CompoundPath, PointF64};
+use visioncortex::{
+    BinaryImage, BoundingRect, Color, ColorImage, ColorName, CompoundPath, PointF64,
+};
 
 use crate::types::{TraceMode, TraceSettings};
 
@@ -80,10 +82,16 @@ impl ConversionConfig {
 
 #[derive(Debug, Clone)]
 struct SvgFile {
-    paths: Vec<SvgPath>,
+    elements: Vec<SvgElement>,
     width: usize,
     height: usize,
     path_precision: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+enum SvgElement {
+    Path(SvgPath),
+    Primitive(SvgPrimitive),
 }
 
 #[derive(Debug, Clone)]
@@ -92,10 +100,34 @@ struct SvgPath {
     color: Color,
 }
 
+#[derive(Debug, Clone)]
+enum SvgPrimitive {
+    Rect {
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        color: Color,
+    },
+    Circle {
+        cx: f64,
+        cy: f64,
+        r: f64,
+        color: Color,
+    },
+    Ellipse {
+        cx: f64,
+        cy: f64,
+        rx: f64,
+        ry: f64,
+        color: Color,
+    },
+}
+
 impl SvgFile {
     fn new(width: usize, height: usize, path_precision: Option<u32>) -> Self {
         Self {
-            paths: Vec::new(),
+            elements: Vec::new(),
             width,
             height,
             path_precision,
@@ -103,7 +135,12 @@ impl SvgFile {
     }
 
     fn add_path(&mut self, path: CompoundPath, color: Color) {
-        self.paths.push(SvgPath { path, color });
+        self.elements
+            .push(SvgElement::Path(SvgPath { path, color }));
+    }
+
+    fn add_primitive(&mut self, primitive: SvgPrimitive) {
+        self.elements.push(SvgElement::Primitive(primitive));
     }
 }
 
@@ -117,8 +154,13 @@ impl fmt::Display for SvgFile {
             self.width, self.height
         )?;
 
-        for path in &self.paths {
-            path.fmt_with_precision(f, self.path_precision)?;
+        for element in &self.elements {
+            match element {
+                SvgElement::Path(path) => path.fmt_with_precision(f, self.path_precision)?,
+                SvgElement::Primitive(primitive) => {
+                    primitive.fmt_with_precision(f, self.path_precision)?
+                }
+            }
         }
 
         writeln!(f, "</svg>")
@@ -145,15 +187,93 @@ impl SvgPath {
     }
 }
 
+impl SvgPrimitive {
+    fn fmt_with_precision(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        precision: Option<u32>,
+    ) -> fmt::Result {
+        match self {
+            Self::Rect {
+                x,
+                y,
+                width,
+                height,
+                color,
+            } => writeln!(
+                f,
+                r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
+                format_number(*x, precision),
+                format_number(*y, precision),
+                format_number(*width, precision),
+                format_number(*height, precision),
+                color.to_hex_string(),
+            ),
+            Self::Circle { cx, cy, r, color } => writeln!(
+                f,
+                r#"<circle cx="{}" cy="{}" r="{}" fill="{}"/>"#,
+                format_number(*cx, precision),
+                format_number(*cy, precision),
+                format_number(*r, precision),
+                color.to_hex_string(),
+            ),
+            Self::Ellipse {
+                cx,
+                cy,
+                rx,
+                ry,
+                color,
+            } => writeln!(
+                f,
+                r#"<ellipse cx="{}" cy="{}" rx="{}" ry="{}" fill="{}"/>"#,
+                format_number(*cx, precision),
+                format_number(*cy, precision),
+                format_number(*rx, precision),
+                format_number(*ry, precision),
+                color.to_hex_string(),
+            ),
+        }
+    }
+}
+
+fn format_number(value: f64, precision: Option<u32>) -> String {
+    let precision = precision.unwrap_or(4) as usize;
+    let mut formatted = format!("{value:.precision$}");
+    if formatted.contains('.') {
+        while formatted.ends_with('0') {
+            formatted.pop();
+        }
+        if formatted.ends_with('.') {
+            formatted.pop();
+        }
+    }
+    if formatted == "-0" {
+        "0".to_string()
+    } else {
+        formatted
+    }
+}
+
 pub(crate) fn trace_to_svg(image: &RgbaImage, settings: &TraceSettings) -> Result<String> {
     let config = ConversionConfig::from_trace_settings(settings);
+    let binary_fill = if matches!(config.color_mode, ColorMode::Binary) {
+        detect_binary_fill_color(image)
+    } else {
+        None
+    };
     let color_image = ColorImage {
         pixels: image.clone().into_raw(),
         width: image.width() as usize,
         height: image.height() as usize,
     };
     let svg = convert(color_image, config).map_err(|error| anyhow!(error))?;
-    Ok(svg.to_string())
+    let mut svg = svg.to_string();
+    if let Some((r, g, b)) = binary_fill {
+        let replacement = format!("fill=\"#{r:02x}{g:02x}{b:02x}\"");
+        svg = svg.replace(r#"fill="black""#, &replacement);
+        svg = svg.replace("fill=\"#000000\"", &replacement);
+    }
+    Ok(svg)
 }
 
 fn convert(img: ColorImage, config: ConversionConfig) -> Result<SvgFile, String> {
@@ -294,6 +414,24 @@ fn color_image_to_svg(mut img: ColorImage, config: ConversionConfig) -> Result<S
 
     for &cluster_index in view.clusters_output.iter().rev() {
         let cluster = view.get_cluster(cluster_index);
+        let cluster_rect = cluster.rect;
+        let cluster_width = cluster_rect.width() as usize;
+        let cluster_height = cluster_rect.height() as usize;
+        let cluster_area = cluster.area();
+        if should_attempt_primitive_detection(
+            config.mode,
+            cluster_width,
+            cluster_height,
+            cluster_area,
+        ) {
+            let cluster_image = cluster.to_image(&view);
+            if let Some(primitive) =
+                detect_primitive(&cluster_image, cluster_rect, cluster.residue_color())
+            {
+                svg.add_primitive(primitive);
+                continue;
+            }
+        }
         let paths = cluster.to_compound_path(
             &view,
             false,
@@ -325,7 +463,27 @@ fn binary_image_to_svg(img: ColorImage, config: ConversionConfig) -> Result<SvgF
     let mut svg = SvgFile::new(width, height, config.path_precision);
     for index in 0..clusters.len() {
         let cluster = clusters.get_cluster(index);
-        if cluster.size() >= config.filter_speckle_area() {
+        let cluster_size = cluster.size();
+        if cluster_size >= config.filter_speckle_area() {
+            let cluster_rect = cluster.rect;
+            let cluster_width = cluster_rect.width() as usize;
+            let cluster_height = cluster_rect.height() as usize;
+            if should_attempt_primitive_detection(
+                config.mode,
+                cluster_width,
+                cluster_height,
+                cluster_size,
+            ) {
+                let cluster_image = cluster.to_binary_image();
+                if let Some(primitive) = detect_primitive(
+                    &cluster_image,
+                    cluster_rect,
+                    Color::color(&ColorName::Black),
+                ) {
+                    svg.add_primitive(primitive);
+                    continue;
+                }
+            }
             let paths = cluster.to_compound_path(
                 match config.mode {
                     TraceMode::Spline => visioncortex::PathSimplifyMode::Spline,
@@ -343,13 +501,142 @@ fn binary_image_to_svg(img: ColorImage, config: ConversionConfig) -> Result<SvgF
     Ok(svg)
 }
 
+fn detect_binary_fill_color(image: &RgbaImage) -> Option<(u8, u8, u8)> {
+    let mut counts = std::collections::HashMap::<[u8; 3], usize>::new();
+    for pixel in image.pixels() {
+        if pixel[3] <= 16 {
+            continue;
+        }
+        *counts.entry([pixel[0], pixel[1], pixel[2]]).or_default() += 1;
+    }
+
+    counts
+        .into_iter()
+        .max_by_key(|(_, count)| *count)
+        .map(|(color, _)| (color[0], color[1], color[2]))
+}
+
+fn should_attempt_primitive_detection(
+    mode: TraceMode,
+    width: usize,
+    height: usize,
+    area: usize,
+) -> bool {
+    if !matches!(mode, TraceMode::Polygon) {
+        return false;
+    }
+
+    let bbox_area = width.saturating_mul(height);
+    if bbox_area < 16 || area < 8 {
+        return false;
+    }
+
+    if area == bbox_area {
+        return true;
+    }
+
+    width >= 4 && height >= 4 && area * 100 >= bbox_area * 55 && area * 100 <= bbox_area * 90
+}
+
+fn detect_primitive(mask: &BinaryImage, rect: BoundingRect, color: Color) -> Option<SvgPrimitive> {
+    if mask.width == 0 || mask.height == 0 {
+        return None;
+    }
+
+    let bbox_area = mask.width * mask.height;
+    let area = mask.area() as usize;
+
+    if area == bbox_area {
+        return Some(SvgPrimitive::Rect {
+            x: rect.left as f64,
+            y: rect.top as f64,
+            width: mask.width as f64,
+            height: mask.height as f64,
+            color,
+        });
+    }
+
+    if mask.width < 4 || mask.height < 4 || bbox_area < 16 || area < 8 {
+        return None;
+    }
+
+    let fill_ratio = area as f64 / bbox_area as f64;
+    if !(0.55..=0.90).contains(&fill_ratio) || has_internal_holes(mask) {
+        return None;
+    }
+
+    let allowed_mismatch = (bbox_area / 40).max(2);
+    let mismatch = ellipse_mask_difference(mask, allowed_mismatch);
+    if mismatch > allowed_mismatch {
+        return None;
+    }
+
+    let cx = rect.left as f64 + mask.width as f64 / 2.0;
+    let cy = rect.top as f64 + mask.height as f64 / 2.0;
+    let rx = mask.width as f64 / 2.0;
+    let ry = mask.height as f64 / 2.0;
+    let aspect_delta =
+        (mask.width as f64 - mask.height as f64).abs() / mask.width.max(mask.height) as f64;
+
+    if aspect_delta <= 0.08 {
+        Some(SvgPrimitive::Circle {
+            cx,
+            cy,
+            r: rx.min(ry),
+            color,
+        })
+    } else {
+        Some(SvgPrimitive::Ellipse {
+            cx,
+            cy,
+            rx,
+            ry,
+            color,
+        })
+    }
+}
+
+fn has_internal_holes(mask: &BinaryImage) -> bool {
+    mask.negative().to_clusters(false).iter().any(|cluster| {
+        cluster.rect.left > 0
+            && cluster.rect.top > 0
+            && cluster.rect.right < mask.width as i32
+            && cluster.rect.bottom < mask.height as i32
+    })
+}
+
+fn ellipse_mask_difference(mask: &BinaryImage, allowed_mismatch: usize) -> usize {
+    let cx = mask.width as f64 / 2.0;
+    let cy = mask.height as f64 / 2.0;
+    let rx = (mask.width as f64 / 2.0).max(1.0);
+    let ry = (mask.height as f64 / 2.0).max(1.0);
+    let mut diff = 0usize;
+
+    for y in 0..mask.height {
+        for x in 0..mask.width {
+            let dx = (x as f64 + 0.5 - cx) / rx;
+            let dy = (y as f64 + 0.5 - cy) / ry;
+            let expected = dx * dx + dy * dy <= 1.0;
+            if mask.get_pixel(x, y) != expected {
+                diff += 1;
+                if diff > allowed_mismatch {
+                    return diff;
+                }
+            }
+        }
+    }
+
+    diff
+}
+
 #[cfg(test)]
 mod tests {
     use image::{Rgba, RgbaImage};
 
-    use super::trace_to_svg;
+    use super::{detect_primitive, trace_to_svg};
     use crate::preprocess::trace_settings_for_preset;
-    use crate::types::QualityPreset;
+    use crate::types::{QualityPreset, TraceMode, TraceSettings};
+    use visioncortex::{BinaryImage, BoundingRect};
 
     #[test]
     fn internal_vectorizer_traces_simple_color_regions() {
@@ -367,7 +654,100 @@ mod tests {
 
         let svg = trace_to_svg(&image, &trace_settings_for_preset(QualityPreset::Figma)).unwrap();
         assert!(svg.contains("<svg"));
-        assert!(svg.contains("<path"));
+        assert!(svg.contains("<path") || svg.contains("<rect"));
         assert!(svg.contains("fill=\""));
+    }
+
+    #[test]
+    fn binary_trace_preserves_monochrome_fill_color() {
+        let mut image = RgbaImage::new(16, 16);
+        for y in 4..12 {
+            for x in 4..12 {
+                image.put_pixel(x, y, Rgba([103, 0, 235, 255]));
+            }
+        }
+
+        let settings = TraceSettings {
+            color_mode: "binary",
+            hierarchical: "stacked",
+            mode: TraceMode::Spline,
+            filter_speckle: 0,
+            color_precision: 6,
+            layer_difference: 0,
+            length_threshold: 3.5,
+            corner_threshold: 45,
+            max_iterations: 10,
+            splice_threshold: 45,
+            path_precision: 5,
+            optimizer_precision: 1,
+        };
+        let svg = trace_to_svg(&image, &settings).unwrap();
+        let svg = svg.to_ascii_lowercase();
+        assert!(svg.contains("fill=\"#6700eb\""));
+        assert!(!svg.contains(r#"fill="black""#));
+    }
+
+    #[test]
+    fn primitive_detection_emits_rect_for_filled_box() {
+        let mut mask = BinaryImage::new_w_h(8, 6);
+        for y in 0..6 {
+            for x in 0..8 {
+                mask.set_pixel(x, y, true);
+            }
+        }
+
+        let primitive = detect_primitive(
+            &mask,
+            BoundingRect::new_x_y_w_h(4, 3, 8, 6),
+            visioncortex::Color::color(&visioncortex::ColorName::Black),
+        )
+        .expect("expected rect primitive");
+
+        assert!(matches!(primitive, super::SvgPrimitive::Rect { .. }));
+    }
+
+    #[test]
+    fn primitive_gate_skips_non_polygon_mode() {
+        assert!(!super::should_attempt_primitive_detection(
+            TraceMode::Spline,
+            16,
+            16,
+            200
+        ));
+    }
+
+    #[test]
+    fn trace_to_svg_emits_circle_for_simple_disc() {
+        let mut image = RgbaImage::new(12, 12);
+        let cx = 6.0;
+        let cy = 6.0;
+        let r = 4.0;
+        for y in 0..12 {
+            for x in 0..12 {
+                let dx = x as f64 + 0.5 - cx;
+                let dy = y as f64 + 0.5 - cy;
+                if dx * dx + dy * dy <= r * r {
+                    image.put_pixel(x, y, Rgba([0, 0, 0, 255]));
+                }
+            }
+        }
+
+        let settings = TraceSettings {
+            color_mode: "binary",
+            hierarchical: "stacked",
+            mode: TraceMode::Polygon,
+            filter_speckle: 0,
+            color_precision: 8,
+            layer_difference: 0,
+            length_threshold: 2.0,
+            corner_threshold: 15,
+            max_iterations: 20,
+            splice_threshold: 30,
+            path_precision: 4,
+            optimizer_precision: 1,
+        };
+        let svg = trace_to_svg(&image, &settings).unwrap();
+        assert!(svg.contains("<circle"));
+        assert!(!svg.contains("<path"));
     }
 }

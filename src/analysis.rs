@@ -29,8 +29,7 @@ pub fn analyze_rgba(image: &RgbaImage) -> ImageAnalysis {
         visible_pixels += 1;
         let key = u32::from_be_bytes([r, g, b, a]);
         *counts.entry(key).or_default() += 1;
-        let coarse_key =
-            (u16::from(r >> 4) << 8) | (u16::from(g >> 4) << 4) | u16::from(b >> 4);
+        let coarse_key = (u16::from(r >> 4) << 8) | (u16::from(g >> 4) << 4) | u16::from(b >> 4);
         *coarse_counts.entry(coarse_key).or_default() += 1;
         for (channel, value) in [r, g, b].into_iter().enumerate() {
             let value = f64::from(value);
@@ -52,8 +51,11 @@ pub fn analyze_rgba(image: &RgbaImage) -> ImageAnalysis {
         ranked.iter().take(10).map(|(_, c)| *c).sum::<usize>() as f64 / measured_pixels as f64;
     let top_50_coverage =
         ranked.iter().take(50).map(|(_, c)| *c).sum::<usize>() as f64 / measured_pixels as f64;
-    let coarse_top_12_coverage = coarse_ranked.iter().take(12).map(|(_, c)| *c).sum::<usize>()
-        as f64
+    let coarse_top_12_coverage = coarse_ranked
+        .iter()
+        .take(12)
+        .map(|(_, c)| *c)
+        .sum::<usize>() as f64
         / measured_pixels as f64;
 
     let color_variance = (0..3)
@@ -93,6 +95,14 @@ pub fn analyze_rgba(image: &RgbaImage) -> ImageAnalysis {
         } else {
             (ImageKind::Icon, Complexity::Medium)
         }
+    } else if alpha_coverage < 0.75
+        && effective_colors <= 128
+        && top_10_coverage >= 0.78
+        && top_50_coverage >= 0.94
+        && color_variance <= 110.0
+        && (0.008..=0.18).contains(&edge_density)
+    {
+        (ImageKind::Illustration, Complexity::Medium)
     } else if antialiased_flat_graphic {
         if effective_colors <= 8 && color_variance < 55.0 {
             (ImageKind::Logo, Complexity::Simple)
@@ -244,7 +254,34 @@ mod tests {
         }
 
         let analysis = analyze_image(&DynamicImage::ImageRgba8(image));
-        assert!(matches!(analysis.image_type, ImageKind::Icon | ImageKind::Logo));
+        assert!(matches!(
+            analysis.image_type,
+            ImageKind::Icon | ImageKind::Logo
+        ));
         assert!(analysis.effective_colors <= 16);
+    }
+
+    #[test]
+    fn classifies_sparse_transparent_diagram_like_input_as_illustration() {
+        let mut image = RgbaImage::new(256, 256);
+        for y in 24..232 {
+            for x in 24..232 {
+                image.put_pixel(x, y, Rgba([255, 255, 255, 255]));
+            }
+        }
+
+        for y in 48..208 {
+            image.put_pixel(80, y, Rgba([0, 0, 0, 255]));
+            image.put_pixel(176, y, Rgba([0, 0, 255, 255]));
+        }
+        for x in 48..208 {
+            image.put_pixel(x, 80, Rgba([255, 0, 0, 255]));
+            image.put_pixel(x, 176, Rgba([255, 255, 0, 255]));
+        }
+
+        let analysis = analyze_image(&DynamicImage::ImageRgba8(image));
+        assert_eq!(analysis.image_type, ImageKind::Illustration);
+        assert_eq!(analysis.complexity, crate::types::Complexity::Medium);
+        assert!(analysis.is_sparse_diagram_like());
     }
 }

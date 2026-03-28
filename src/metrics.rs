@@ -4,11 +4,26 @@ use resvg::{tiny_skia, usvg};
 use serde::{Deserialize, Serialize};
 
 pub const BENCHMARK_REFERENCE_MIN_LONGEST_SIDE: u32 = 1024;
+const MAX_PSNR_DB: f64 = 100.0;
+
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedMetricsInput {
+    flattened: RgbaImage,
+    gray: Vec<f64>,
+    blurred_gray: Vec<f64>,
+    dilated_edges: Vec<bool>,
+    foreground_mask: Vec<bool>,
+    topology_components: usize,
+    topology_holes: usize,
+    lab_pixels: Vec<(f64, f64, f64)>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QualityMetrics {
     pub ssim: f64,
     pub ssim_perceptual: f64,
+    pub local_ssim_p10: f64,
+    pub local_ssim_min: f64,
     pub gradient_similarity: f64,
     pub edge_similarity: f64,
     pub edge_precision: f64,
@@ -26,25 +41,29 @@ pub struct QualityMetrics {
 }
 
 pub fn compute_metrics(original: &DynamicImage, svg: &str) -> Result<QualityMetrics> {
-    let original = flatten_on_white(&original.to_rgba8());
-    let rendered = render_svg_to_image(svg, original.width(), original.height())?;
+    let prepared = PreparedMetricsInput::from_image(original);
+    compute_metrics_against(&prepared, svg)
+}
+
+pub(crate) fn compute_metrics_against(
+    prepared: &PreparedMetricsInput,
+    svg: &str,
+) -> Result<QualityMetrics> {
+    let rendered =
+        render_svg_to_image(svg, prepared.flattened.width(), prepared.flattened.height())?;
     let rendered = flatten_on_white(&rendered);
-    let original_blurred = image::imageops::blur(&original, 1.5);
     let rendered_blurred = image::imageops::blur(&rendered, 1.5);
 
     let mut mse = 0.0;
     let mut mae = 0.0;
-    let mut original_gray = Vec::with_capacity((original.width() * original.height()) as usize);
     let mut rendered_gray = Vec::with_capacity((rendered.width() * rendered.height()) as usize);
-    let mut original_blurred_gray =
-        Vec::with_capacity((original.width() * original.height()) as usize);
     let mut rendered_blurred_gray =
         Vec::with_capacity((rendered.width() * rendered.height()) as usize);
 
-    for (((left, right), left_blur), right_blur) in original
+    for ((left, right), right_blur) in prepared
+        .flattened
         .pixels()
         .zip(rendered.pixels())
-        .zip(original_blurred.pixels())
         .zip(rendered_blurred.pixels())
     {
         let [lr, lg, lb, _] = left.0;
@@ -55,34 +74,39 @@ pub fn compute_metrics(original: &DynamicImage, svg: &str) -> Result<QualityMetr
             mae += delta.abs();
         }
 
-        original_gray.push(luma(left));
         rendered_gray.push(luma(right));
-        original_blurred_gray.push(luma(left_blur));
         rendered_blurred_gray.push(luma(right_blur));
     }
 
-    let denom = (original.width() as f64 * original.height() as f64 * 3.0).max(1.0);
+    let denom =
+        (prepared.flattened.width() as f64 * prepared.flattened.height() as f64 * 3.0).max(1.0);
     mse /= denom;
     mae /= denom;
     let psnr = if mse == 0.0 {
-        f64::INFINITY
+        MAX_PSNR_DB
     } else {
         10.0 * ((255.0 * 255.0) / mse).log10()
     };
 
-    let ssim = compute_ssim(&original_gray, &rendered_gray);
-    let ssim_perceptual = compute_ssim(&original_blurred_gray, &rendered_blurred_gray);
-    let gradient_similarity = compute_gradient_similarity(
-        &original_blurred_gray,
-        &rendered_blurred_gray,
-        original.width(),
-        original.height(),
+    let ssim = compute_ssim(&prepared.gray, &rendered_gray);
+    let ssim_perceptual = compute_ssim(&prepared.blurred_gray, &rendered_blurred_gray);
+    let (local_ssim_p10, local_ssim_min) = compute_local_ssim_distribution(
+        &prepared.gray,
+        &rendered_gray,
+        prepared.flattened.width(),
+        prepared.flattened.height(),
     );
-    let edge = edge_metrics(&original, &rendered);
-    let delta_e = average_delta_e(&original, &rendered);
+    let gradient_similarity = compute_gradient_similarity(
+        &prepared.blurred_gray,
+        &rendered_blurred_gray,
+        prepared.flattened.width(),
+        prepared.flattened.height(),
+    );
+    let edge = edge_metrics_against(prepared, &rendered);
+    let delta_e = average_delta_e_against(prepared, &rendered);
     let color_similarity = (1.0 - (delta_e / 40.0).min(1.0)).clamp(0.0, 1.0);
-    let foreground_iou = foreground_iou(&original, &rendered);
-    let topology_score = topology_score(&original, &rendered);
+    let foreground_iou = foreground_iou_against(prepared, &rendered);
+    let topology_score = topology_score_against(prepared, &rendered);
     let fidelity_score = (ssim * 0.24
         + ssim_perceptual * 0.14
         + gradient_similarity * 0.13
@@ -96,6 +120,8 @@ pub fn compute_metrics(original: &DynamicImage, svg: &str) -> Result<QualityMetr
     Ok(QualityMetrics {
         ssim,
         ssim_perceptual,
+        local_ssim_p10,
+        local_ssim_min,
         gradient_similarity,
         edge_similarity: edge.iou,
         edge_precision: edge.precision,
@@ -109,8 +135,56 @@ pub fn compute_metrics(original: &DynamicImage, svg: &str) -> Result<QualityMetr
         psnr,
         mae,
         file_size: svg.len(),
-        path_count: svg.matches("<path").count(),
+        path_count: count_shape_elements(svg),
     })
+}
+
+impl PreparedMetricsInput {
+    pub(crate) fn from_image(original: &DynamicImage) -> Self {
+        let flattened = flatten_on_white(&original.to_rgba8());
+        let flattened_blurred = image::imageops::blur(&flattened, 1.5);
+        let gray = grayscale_pixels(&flattened);
+        let blurred_gray = grayscale_pixels(&flattened_blurred);
+        let detected_edges = detect_edges_from_gray(&gray, flattened.width(), flattened.height());
+        let dilated_edges = dilate_binary(&detected_edges, flattened.width(), flattened.height());
+        let foreground_mask = threshold_foreground(&flattened);
+        let topology_components = count_components(
+            &foreground_mask,
+            flattened.width(),
+            flattened.height(),
+            true,
+        );
+        let topology_holes = count_holes(&foreground_mask, flattened.width(), flattened.height());
+        let lab_pixels = flattened
+            .pixels()
+            .map(|pixel| rgb_to_lab(pixel[0], pixel[1], pixel[2]))
+            .collect();
+        Self {
+            flattened,
+            gray,
+            blurred_gray,
+            dilated_edges,
+            foreground_mask,
+            topology_components,
+            topology_holes,
+            lab_pixels,
+        }
+    }
+}
+
+fn count_shape_elements(svg: &str) -> usize {
+    [
+        "<path",
+        "<rect",
+        "<circle",
+        "<ellipse",
+        "<polygon",
+        "<polyline",
+        "<line",
+    ]
+    .into_iter()
+    .map(|needle| svg.matches(needle).count())
+    .sum()
 }
 
 pub fn render_svg_to_image(svg: &str, width: u32, height: u32) -> Result<RgbaImage> {
@@ -146,8 +220,8 @@ pub fn render_svg_file_to_png_with_min_longest_side(
             .and_then(|path| path.parent().map(|p| p.to_path_buf())),
         ..usvg::Options::default()
     };
-    options.fontdb_mut().load_system_fonts();
     let data = std::fs::read(input)?;
+    options.fontdb_mut().load_system_fonts();
     let tree = usvg::Tree::from_data(&data, &options).map_err(|e| anyhow!("invalid svg: {e}"))?;
     let base_size = tree.size().to_int_size();
     let base_width = base_size.width().max(1);
@@ -184,6 +258,10 @@ fn flatten_on_white(image: &RgbaImage) -> RgbaImage {
         *target = Rgba([blend(source[0]), blend(source[1]), blend(source[2]), 255]);
     }
     out
+}
+
+fn grayscale_pixels(image: &RgbaImage) -> Vec<f64> {
+    image.pixels().map(luma).collect()
 }
 
 fn luma(pixel: &Rgba<u8>) -> f64 {
@@ -228,6 +306,49 @@ fn compute_gradient_similarity(left: &[f64], right: &[f64], width: u32, height: 
     compute_ssim(&left_gradients, &right_gradients)
 }
 
+fn compute_local_ssim_distribution(
+    left: &[f64],
+    right: &[f64],
+    width: u32,
+    height: u32,
+) -> (f64, f64) {
+    let grid_x = (width / 128).clamp(1, 8);
+    let grid_y = (height / 128).clamp(1, 8);
+    let tile_width = ((width as f64) / grid_x as f64).ceil() as usize;
+    let tile_height = ((height as f64) / grid_y as f64).ceil() as usize;
+    let width = width as usize;
+    let height = height as usize;
+    let mut scores = Vec::new();
+
+    for tile_y in 0..grid_y as usize {
+        let y0 = tile_y * tile_height;
+        if y0 >= height {
+            continue;
+        }
+        let y1 = ((tile_y + 1) * tile_height).min(height);
+        for tile_x in 0..grid_x as usize {
+            let x0 = tile_x * tile_width;
+            if x0 >= width {
+                continue;
+            }
+            let x1 = ((tile_x + 1) * tile_width).min(width);
+            let mut left_tile = Vec::with_capacity((x1 - x0) * (y1 - y0));
+            let mut right_tile = Vec::with_capacity((x1 - x0) * (y1 - y0));
+            for y in y0..y1 {
+                let row_start = y * width;
+                left_tile.extend_from_slice(&left[row_start + x0..row_start + x1]);
+                right_tile.extend_from_slice(&right[row_start + x0..row_start + x1]);
+            }
+            scores.push(compute_ssim(&left_tile, &right_tile));
+        }
+    }
+
+    scores.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let min = scores.first().copied().unwrap_or(0.0);
+    let p10 = percentile(&scores, 0.10);
+    (p10, min)
+}
+
 fn sobel_magnitudes(gray: &[f64], width: u32, height: u32) -> Vec<f64> {
     let width = width as usize;
     let height = height as usize;
@@ -263,12 +384,13 @@ struct EdgeMetrics {
     f1: f64,
 }
 
-fn edge_metrics(left: &RgbaImage, right: &RgbaImage) -> EdgeMetrics {
-    let left_edges = detect_edges(left);
+fn edge_metrics_against(prepared: &PreparedMetricsInput, right: &RgbaImage) -> EdgeMetrics {
     let right_edges = detect_edges(right);
-    let left_edges = dilate_binary(&left_edges, left.width(), left.height());
     let right_edges = dilate_binary(&right_edges, right.width(), right.height());
+    overlap_edge_metrics(&prepared.dilated_edges, &right_edges)
+}
 
+fn overlap_edge_metrics(left_edges: &[bool], right_edges: &[bool]) -> EdgeMetrics {
     let mut intersection = 0usize;
     let mut union = 0usize;
     let mut predicted = 0usize;
@@ -319,6 +441,10 @@ fn edge_metrics(left: &RgbaImage, right: &RgbaImage) -> EdgeMetrics {
 fn detect_edges(image: &RgbaImage) -> Vec<bool> {
     let (width, height) = image.dimensions();
     let gray = image.pixels().map(luma).collect::<Vec<_>>();
+    detect_edges_from_gray(&gray, width, height)
+}
+
+fn detect_edges_from_gray(gray: &[f64], width: u32, height: u32) -> Vec<bool> {
     let mut edges = vec![false; (width * height) as usize];
     if width < 3 || height < 3 {
         return edges;
@@ -367,12 +493,10 @@ fn dilate_binary(input: &[bool], width: u32, height: u32) -> Vec<bool> {
     output
 }
 
-fn topology_score(left: &RgbaImage, right: &RgbaImage) -> f64 {
-    let (components_left, holes_left) = topology_stats(left);
+fn topology_score_against(prepared: &PreparedMetricsInput, right: &RgbaImage) -> f64 {
     let (components_right, holes_right) = topology_stats(right);
-
-    let score_c = ratio_score(components_left, components_right);
-    let score_h = ratio_score(holes_left, holes_right);
+    let score_c = ratio_score(prepared.topology_components, components_right);
+    let score_h = ratio_score(prepared.topology_holes, holes_right);
     (score_c + score_h) / 2.0
 }
 
@@ -384,19 +508,21 @@ fn topology_stats(image: &RgbaImage) -> (usize, usize) {
 }
 
 fn threshold_foreground(image: &RgbaImage) -> Vec<bool> {
-    image
-        .pixels()
-        .map(|pixel| {
-            let [r, g, b, _] = pixel.0;
-            let luminance = 0.299 * f64::from(r) + 0.587 * f64::from(g) + 0.114 * f64::from(b);
-            luminance < 250.0
-        })
-        .collect()
+    image.pixels().map(is_foreground).collect()
 }
 
-fn foreground_iou(left: &RgbaImage, right: &RgbaImage) -> f64 {
-    let left_mask = threshold_foreground(left);
+fn is_foreground(pixel: &Rgba<u8>) -> bool {
+    let [r, g, b, _] = pixel.0;
+    let luminance = 0.299 * f64::from(r) + 0.587 * f64::from(g) + 0.114 * f64::from(b);
+    luminance < 250.0
+}
+
+fn foreground_iou_against(prepared: &PreparedMetricsInput, right: &RgbaImage) -> f64 {
     let right_mask = threshold_foreground(right);
+    foreground_iou_from_masks(&prepared.foreground_mask, &right_mask)
+}
+
+fn foreground_iou_from_masks(left_mask: &[bool], right_mask: &[bool]) -> f64 {
     let mut intersection = 0usize;
     let mut union = 0usize;
     for (a, b) in left_mask.iter().zip(right_mask.iter()) {
@@ -430,13 +556,50 @@ fn count_components(binary: &[bool], width: u32, height: u32, target: bool) -> u
             visited[index] = true;
             queue.push_back((x, y));
             while let Some((cx, cy)) = queue.pop_front() {
-                for (nx, ny) in neighbors4(cx, cy, width, height) {
-                    let nindex = idx(nx, ny);
-                    if !visited[nindex] && binary[nindex] == target {
-                        visited[nindex] = true;
-                        queue.push_back((nx, ny));
-                    }
-                }
+                visit_neighbor(
+                    cx.wrapping_sub(1),
+                    cy,
+                    width,
+                    height,
+                    binary,
+                    target,
+                    &mut visited,
+                    &mut queue,
+                    idx,
+                );
+                visit_neighbor(
+                    cx + 1,
+                    cy,
+                    width,
+                    height,
+                    binary,
+                    target,
+                    &mut visited,
+                    &mut queue,
+                    idx,
+                );
+                visit_neighbor(
+                    cx,
+                    cy.wrapping_sub(1),
+                    width,
+                    height,
+                    binary,
+                    target,
+                    &mut visited,
+                    &mut queue,
+                    idx,
+                );
+                visit_neighbor(
+                    cx,
+                    cy + 1,
+                    width,
+                    height,
+                    binary,
+                    target,
+                    &mut visited,
+                    &mut queue,
+                    idx,
+                );
             }
         }
     }
@@ -460,16 +623,50 @@ fn count_holes(binary: &[bool], width: u32, height: u32) -> usize {
             visited[index] = true;
             queue.push_back((x, y));
             while let Some((cx, cy)) = queue.pop_front() {
-                for (nx, ny) in neighbors4(cx, cy, width, height) {
-                    let nindex = idx(nx, ny);
-                    if !visited[nindex] && !binary[nindex] {
-                        if nx == 0 || ny == 0 || nx + 1 == width || ny + 1 == height {
-                            touches_border = true;
-                        }
-                        visited[nindex] = true;
-                        queue.push_back((nx, ny));
-                    }
-                }
+                visit_hole_neighbor(
+                    cx.wrapping_sub(1),
+                    cy,
+                    width,
+                    height,
+                    binary,
+                    &mut visited,
+                    &mut queue,
+                    idx,
+                    &mut touches_border,
+                );
+                visit_hole_neighbor(
+                    cx + 1,
+                    cy,
+                    width,
+                    height,
+                    binary,
+                    &mut visited,
+                    &mut queue,
+                    idx,
+                    &mut touches_border,
+                );
+                visit_hole_neighbor(
+                    cx,
+                    cy.wrapping_sub(1),
+                    width,
+                    height,
+                    binary,
+                    &mut visited,
+                    &mut queue,
+                    idx,
+                    &mut touches_border,
+                );
+                visit_hole_neighbor(
+                    cx,
+                    cy + 1,
+                    width,
+                    height,
+                    binary,
+                    &mut visited,
+                    &mut queue,
+                    idx,
+                    &mut touches_border,
+                );
             }
             if !touches_border {
                 holes += 1;
@@ -479,21 +676,47 @@ fn count_holes(binary: &[bool], width: u32, height: u32) -> usize {
     holes
 }
 
-fn neighbors4(x: u32, y: u32, width: u32, height: u32) -> Vec<(u32, u32)> {
-    let mut out = Vec::with_capacity(4);
-    if x > 0 {
-        out.push((x - 1, y));
+fn visit_neighbor(
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    binary: &[bool],
+    target: bool,
+    visited: &mut [bool],
+    queue: &mut std::collections::VecDeque<(u32, u32)>,
+    idx: impl Fn(u32, u32) -> usize,
+) {
+    if x < width && y < height {
+        let index = idx(x, y);
+        if !visited[index] && binary[index] == target {
+            visited[index] = true;
+            queue.push_back((x, y));
+        }
     }
-    if x + 1 < width {
-        out.push((x + 1, y));
+}
+
+fn visit_hole_neighbor(
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+    binary: &[bool],
+    visited: &mut [bool],
+    queue: &mut std::collections::VecDeque<(u32, u32)>,
+    idx: impl Fn(u32, u32) -> usize,
+    touches_border: &mut bool,
+) {
+    if x < width && y < height {
+        let index = idx(x, y);
+        if !visited[index] && !binary[index] {
+            if x == 0 || y == 0 || x + 1 == width || y + 1 == height {
+                *touches_border = true;
+            }
+            visited[index] = true;
+            queue.push_back((x, y));
+        }
     }
-    if y > 0 {
-        out.push((x, y - 1));
-    }
-    if y + 1 < height {
-        out.push((x, y + 1));
-    }
-    out
 }
 
 fn ratio_score(a: usize, b: usize) -> f64 {
@@ -505,12 +728,39 @@ fn ratio_score(a: usize, b: usize) -> f64 {
     }
 }
 
-fn average_delta_e(left: &RgbaImage, right: &RgbaImage) -> f64 {
+fn percentile(values: &[f64], quantile: f64) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    if values.len() == 1 {
+        return values[0];
+    }
+    let position = quantile.clamp(0.0, 1.0) * (values.len() - 1) as f64;
+    let lower = position.floor() as usize;
+    let upper = position.ceil() as usize;
+    if lower == upper {
+        values[lower]
+    } else {
+        let weight = position - lower as f64;
+        values[lower] * (1.0 - weight) + values[upper] * weight
+    }
+}
+
+fn average_delta_e_against(prepared: &PreparedMetricsInput, right: &RgbaImage) -> f64 {
+    let rendered_lab = right
+        .pixels()
+        .map(|pixel| rgb_to_lab(pixel[0], pixel[1], pixel[2]))
+        .collect::<Vec<_>>();
+    average_delta_e_from_lab_against(prepared, &rendered_lab)
+}
+
+fn average_delta_e_from_lab_against(
+    prepared: &PreparedMetricsInput,
+    rendered_lab: &[(f64, f64, f64)],
+) -> f64 {
     let mut total = 0.0;
     let mut count = 0usize;
-    for (a, b) in left.pixels().zip(right.pixels()) {
-        let lab_a = rgb_to_lab(a[0], a[1], a[2]);
-        let lab_b = rgb_to_lab(b[0], b[1], b[2]);
+    for (lab_a, lab_b) in prepared.lab_pixels.iter().zip(rendered_lab.iter()) {
         total += ((lab_a.0 - lab_b.0).powi(2)
             + (lab_a.1 - lab_b.1).powi(2)
             + (lab_a.2 - lab_b.2).powi(2))
@@ -562,9 +812,11 @@ fn rgb_to_lab(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
 mod tests {
     use std::fs;
 
+    use image::{DynamicImage, Rgba, RgbaImage};
     use tempfile::tempdir;
 
     use super::{
+        compute_local_ssim_distribution, compute_metrics, count_shape_elements,
         render_svg_file_to_png_with_min_longest_side, BENCHMARK_REFERENCE_MIN_LONGEST_SIDE,
     };
 
@@ -589,5 +841,47 @@ mod tests {
         let image = image::open(output).unwrap();
         assert_eq!(image.width(), BENCHMARK_REFERENCE_MIN_LONGEST_SIDE);
         assert_eq!(image.height(), BENCHMARK_REFERENCE_MIN_LONGEST_SIDE / 2);
+    }
+
+    #[test]
+    fn local_ssim_detects_single_quadrant_failure() {
+        let width = 256;
+        let height = 256;
+        let mut left = vec![255.0; width * height];
+        let mut right = left.clone();
+        for y in 0..height / 2 {
+            for x in 0..width / 2 {
+                right[y * width + x] = 0.0;
+            }
+        }
+
+        let (p10, min) =
+            compute_local_ssim_distribution(&left, &right, width as u32, height as u32);
+        assert!(p10 < 0.6);
+        assert!(min < 0.1);
+        left[0] = 255.0;
+    }
+
+    #[test]
+    fn psnr_is_finite_for_perfect_reconstruction() {
+        let mut image = RgbaImage::new(4, 4);
+        for pixel in image.pixels_mut() {
+            *pixel = Rgba([0, 0, 0, 255]);
+        }
+
+        let metrics = compute_metrics(
+            &DynamicImage::ImageRgba8(image),
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4" viewBox="0 0 4 4"><rect width="4" height="4" fill="#000"/></svg>"##,
+        )
+        .unwrap();
+
+        assert!(metrics.psnr.is_finite());
+        assert_eq!(metrics.psnr, 100.0);
+    }
+
+    #[test]
+    fn path_count_includes_native_shape_elements() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/><circle cx="2" cy="2" r="1"/><path d="M0 0L1 1Z"/></svg>"##;
+        assert_eq!(count_shape_elements(svg), 3);
     }
 }

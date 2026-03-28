@@ -1,0 +1,44 @@
+Source: W3C SVG Authoring Examples
+Repository: https://github.com/w3c/svgwg
+Path: specs/svg-authoring/examples
+
+Downloaded files:
+- w3c/absolute-positioning.svg
+- w3c/aria-list.svg
+- w3c/aria-table.svg
+- w3c/auto-resizable.svg
+- w3c/auto-size.svg
+- w3c/centered-symbol.svg
+- w3c/clock-animate-0.svg
+- w3c/clock-animate-1.svg
+- w3c/clock-bad-0.svg
+- w3c/clock-bad-0a.svg
+- w3c/clock-bad-1.svg
+- w3c/clock-bad-2.svg
+- w3c/clock-bad-3.svg
+- w3c/clock-non-responsive.svg
+- w3c/clock-responsive-0.svg
+- w3c/clock-responsive-1.svg
+- w3c/document-order-bad.svg
+- w3c/document-order-good.svg
+- w3c/fixed-size.svg
+- w3c/orbits.svg
+- w3c/painters-model.svg
+- w3c/textpath.svg
+- w3c/title.svg
+- w3c/use-element-1.svg
+- w3c/use-element-2.svg
+- w3c/viewport-0.svg
+- w3c/viewport-1.svg
+
+Additional source: W3C SVG 2 reference and spec images
+Repository: https://github.com/w3c/svgwg
+Path: master/images
+
+Added categories:
+- w3c_master/coords (15 files)
+- w3c_master/filters (18 files)
+- w3c_master/painting (15 files)
+- w3c_master/paths (7 files)
+- w3c_master/shapes (7 files)
+- w3c_master/struct (14 files)

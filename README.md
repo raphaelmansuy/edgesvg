@@ -227,6 +227,7 @@ make bench-full
 Reports include:
 
 - fidelity metrics
+- local-fidelity metrics for localized failure detection
 - size and path complexity
 - per-group summaries
 - lowest-performing assets
