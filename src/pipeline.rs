@@ -255,19 +255,32 @@ fn candidate_score(
     metrics: &crate::metrics::QualityMetrics,
     max_file_size: usize,
 ) -> f64 {
-    let (target_size, target_paths) = complexity_budget(analysis);
+    let smooth_gradient = smooth_gradient_factor(analysis);
+    let (base_target_size, target_paths) = complexity_budget(analysis, smooth_gradient);
+    let target_size = if smooth_gradient > 0.0 {
+        base_target_size.max(max_file_size as f64 * (0.9 + smooth_gradient))
+    } else {
+        base_target_size
+    };
     let fidelity_floor = fidelity_floor(analysis);
-    let edge_floor = edge_floor(analysis);
+    let edge_floor = (edge_floor(analysis) - smooth_gradient * 0.08).max(0.65);
+    let size_penalty_weight = 0.12 * (1.0 - smooth_gradient * 0.55);
+    let path_penalty_weight = 0.18 * (1.0 - smooth_gradient * 0.55);
+    let edge_penalty_weight = 0.25 * (1.0 - smooth_gradient * 0.40);
     let oversize_penalty = if metrics.file_size > max_file_size {
         let oversize = (metrics.file_size - max_file_size) as f64 / max_file_size.max(1) as f64;
-        oversize.ln_1p() * 0.25
+        if smooth_gradient > 0.0 {
+            oversize.powi(2) * (0.06 - smooth_gradient * 0.05)
+        } else {
+            oversize.ln_1p() * 0.25
+        }
     } else {
         0.0
     };
-    let size_penalty = excess_penalty(metrics.file_size as f64, target_size) * 0.12;
-    let path_penalty = excess_penalty(metrics.path_count as f64, target_paths) * 0.18;
+    let size_penalty = excess_penalty(metrics.file_size as f64, target_size) * size_penalty_weight;
+    let path_penalty = excess_penalty(metrics.path_count as f64, target_paths) * path_penalty_weight;
     let fidelity_penalty = (fidelity_floor - metrics.fidelity_score).max(0.0) * 0.45;
-    let edge_penalty = (edge_floor - metrics.edge_f1).max(0.0) * 0.25;
+    let edge_penalty = (edge_floor - metrics.edge_f1).max(0.0) * edge_penalty_weight;
 
     metrics.fidelity_score
         - size_penalty
@@ -282,8 +295,8 @@ fn excess_penalty(actual: f64, target: f64) -> f64 {
     excess.ln_1p()
 }
 
-fn complexity_budget(analysis: &ImageAnalysis) -> (f64, f64) {
-    match (analysis.image_type, analysis.complexity) {
+fn complexity_budget(analysis: &ImageAnalysis, smooth_gradient: f64) -> (f64, f64) {
+    let base = match (analysis.image_type, analysis.complexity) {
         (ImageKind::Icon, Complexity::Simple) => (2_000.0, 10.0),
         (ImageKind::Icon, Complexity::Medium) => (2_500.0, 16.0),
         (ImageKind::Icon, Complexity::Complex) => (3_500.0, 24.0),
@@ -296,7 +309,27 @@ fn complexity_budget(analysis: &ImageAnalysis) -> (f64, f64) {
         (ImageKind::Photo, Complexity::Simple) => (16_000.0, 48.0),
         (ImageKind::Photo, Complexity::Medium) => (24_000.0, 96.0),
         (ImageKind::Photo, Complexity::Complex) => (32_000.0, 144.0),
+    };
+
+    if matches!(analysis.image_type, ImageKind::Illustration | ImageKind::Photo) {
+        let size_multiplier = 1.0 + smooth_gradient * 2.2;
+        let path_multiplier = 1.0 + smooth_gradient * 2.6;
+        (base.0 * size_multiplier, base.1 * path_multiplier)
+    } else {
+        base
     }
+}
+
+fn smooth_gradient_factor(analysis: &ImageAnalysis) -> f64 {
+    if !matches!(analysis.image_type, ImageKind::Illustration | ImageKind::Photo) {
+        return 0.0;
+    }
+
+    let smoothness = ((0.05 - analysis.edge_density) / 0.03).clamp(0.0, 1.0);
+    let richness = ((analysis.unique_colors as f64 - 1_500.0) / 6_000.0).clamp(0.0, 1.0);
+    let coverage = ((1.0 - analysis.top_10_coverage) / 0.35).clamp(0.0, 1.0);
+
+    (smoothness * 0.45 + richness * 0.35 + coverage * 0.20).clamp(0.0, 1.0)
 }
 
 fn fidelity_floor(analysis: &ImageAnalysis) -> f64 {
@@ -503,6 +536,64 @@ mod tests {
         assert!(
             super::candidate_score(&analysis, &compact, 100_000)
                 > super::candidate_score(&analysis, &bloated, 100_000)
+        );
+    }
+
+    #[test]
+    fn candidate_score_allows_reasonable_growth_for_smooth_gradient_scenes() {
+        let analysis = ImageAnalysis {
+            width: 989,
+            height: 1024,
+            unique_colors: 24_514,
+            top_10_coverage: 0.32,
+            top_50_coverage: 0.56,
+            color_variance: 84.0,
+            edge_density: 0.011,
+            alpha_coverage: 1.0,
+            dominant_colors: vec!["#FF6600".to_string()],
+            image_type: ImageKind::Illustration,
+            complexity: Complexity::Medium,
+        };
+        let compact = QualityMetrics {
+            ssim: 0.9948,
+            ssim_perceptual: 0.9976,
+            gradient_similarity: 0.9190,
+            edge_similarity: 0.6923,
+            edge_precision: 0.8195,
+            edge_recall: 0.8168,
+            edge_f1: 0.8181,
+            foreground_iou: 0.9958,
+            color_similarity: 0.9288,
+            fidelity_score: 0.9023,
+            delta_e: 2.84,
+            topology_score: 0.5,
+            psnr: 29.46,
+            mae: 3.27,
+            file_size: 132_618,
+            path_count: 85,
+        };
+        let richer = QualityMetrics {
+            ssim: 0.9954,
+            ssim_perceptual: 0.9979,
+            gradient_similarity: 0.9380,
+            edge_similarity: 0.7074,
+            edge_precision: 0.8294,
+            edge_recall: 0.8278,
+            edge_f1: 0.8286,
+            foreground_iou: 0.9964,
+            color_similarity: 0.9335,
+            fidelity_score: 0.9085,
+            delta_e: 2.66,
+            topology_score: 0.5,
+            psnr: 29.97,
+            mae: 3.04,
+            file_size: 183_478,
+            path_count: 123,
+        };
+
+        assert!(
+            super::candidate_score(&analysis, &richer, 100_000)
+                > super::candidate_score(&analysis, &compact, 100_000)
         );
     }
 }
