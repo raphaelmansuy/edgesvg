@@ -2,14 +2,15 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use image::{DynamicImage, Rgba, RgbaImage};
+use image::{DynamicImage, RgbaImage};
 use regex::Regex;
 use serde::Serialize;
 
 use crate::analysis::analyze_image;
 use crate::metrics::compute_metrics;
 use crate::preprocess::{
-    preprocess_image, quantize_image, trace_settings_for_logo_preset, trace_settings_for_preset,
+    build_monochrome_alpha_mask, preprocess_image, quantize_image, trace_settings_for_logo_preset,
+    trace_settings_for_preset, MONOCHROME_MASK_ALPHA_THRESHOLD,
 };
 use crate::svg::optimize_svg;
 use crate::types::{AutoMode, ImageKind, LogoQualityPreset, QualityPreset, VectorizationReport};
@@ -362,11 +363,14 @@ fn process_geometric_icon(
     color: RgbColor,
     quality: LogoQualityPreset,
 ) -> Result<(String, VectorizationReport)> {
-    let inverted = invert_icon_to_black_white(original);
-    let analysis = analyze_image(&DynamicImage::ImageRgba8(inverted.clone()));
+    let mask = build_monochrome_alpha_mask(
+        &original.to_rgba8(),
+        [color.0, color.1, color.2],
+        MONOCHROME_MASK_ALPHA_THRESHOLD,
+    );
+    let analysis = analyze_image(&DynamicImage::ImageRgba8(mask.clone()));
     let settings = trace_settings_for_logo_preset(quality);
-    let svg = trace_to_svg(&inverted, &settings)?;
-    let svg = recolor_icon_svg(&svg, color);
+    let svg = trace_to_svg(&mask, &settings)?;
     let svg = optimize_svg(&svg, settings.optimizer_precision);
     let metrics = compute_metrics(original, &svg)?;
     Ok((
@@ -378,31 +382,6 @@ fn process_geometric_icon(
             metrics,
         },
     ))
-}
-
-fn invert_icon_to_black_white(original: &DynamicImage) -> RgbaImage {
-    let source = original.to_rgba8();
-    let mut output = RgbaImage::new(source.width(), source.height());
-    for (target, pixel) in output.pixels_mut().zip(source.pixels()) {
-        if pixel[3] > 10 {
-            *target = Rgba([255, 255, 255, 255]);
-        } else {
-            *target = Rgba([0, 0, 0, 255]);
-        }
-    }
-    output
-}
-
-fn recolor_icon_svg(svg: &str, color: RgbColor) -> String {
-    let target_color = format!("#{:02x}{:02x}{:02x}", color.0, color.1, color.2);
-    let black_path_re =
-        Regex::new(r#"(?m)^.*fill="(?:#000000|#000|black)".*\n?"#).expect("valid black path regex");
-    let white_fill_re =
-        Regex::new(r#"fill="(?:#ffffff|#fff|white)""#).expect("valid white fill regex");
-    let without_black = black_path_re.replace_all(svg, "");
-    white_fill_re
-        .replace_all(&without_black, format!(r#"fill="{target_color}""#))
-        .into_owned()
 }
 
 fn prepare_premium_candidate(

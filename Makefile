@@ -6,7 +6,7 @@ BIN := target/release/edgesvg
 GOLDEN_DIR := golden_data
 SAMPLE_LIMIT := 90
 SMOKE_LIMIT := 12
-OODA_LOOPS := 10
+OODA_LOOPS := 50
 
 .DEFAULT_GOAL := help
 
@@ -83,5 +83,5 @@ optimize-ooda: optimize-frontier
 clean-bench:
 	rm -rf benchmark_runs/golden_smoke \
 		benchmark_runs/golden_sample \
-		benchmark_runs/golden_full_current \
+		benchmark_runs/golden_full \
 		benchmark_runs/optimization_frontier

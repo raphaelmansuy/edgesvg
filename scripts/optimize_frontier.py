@@ -7,6 +7,9 @@ from pathlib import Path
 
 
 QUALITY_ORDER = ["figma", "balanced", "quality", "ultra"]
+TARGET_SSIM_OPTIONS = [0.99, 0.995, 0.998]
+MAX_ITER_OPTIONS = [1, 2, 3, 4]
+MAX_FILE_SIZE_OPTIONS = [25_000, 50_000, 75_000, 100_000]
 SEED_CONFIGS = [
     {"quality": "figma", "max_iterations": 3, "target_ssim": 0.998, "max_file_size": 100_000},
     {"quality": "figma", "max_iterations": 4, "target_ssim": 0.995, "max_file_size": 100_000},
@@ -38,6 +41,45 @@ def config_key(cfg: dict) -> str:
 
 def clamp_quality(index: int) -> str:
     return QUALITY_ORDER[max(0, min(index, len(QUALITY_ORDER) - 1))]
+
+
+def build_config_space() -> list[dict]:
+    return [
+        {
+            "quality": quality,
+            "max_iterations": max_iterations,
+            "target_ssim": target_ssim,
+            "max_file_size": max_file_size,
+        }
+        for quality in QUALITY_ORDER
+        for max_iterations in MAX_ITER_OPTIONS
+        for target_ssim in TARGET_SSIM_OPTIONS
+        for max_file_size in MAX_FILE_SIZE_OPTIONS
+    ]
+
+
+def config_distance(left: dict, right: dict) -> tuple:
+    return (
+        abs(QUALITY_ORDER.index(left["quality"]) - QUALITY_ORDER.index(right["quality"])),
+        abs(left["max_iterations"] - right["max_iterations"]),
+        abs(left["target_ssim"] - right["target_ssim"]),
+        abs(left["max_file_size"] - right["max_file_size"]),
+    )
+
+
+def next_unexplored_configs(best: dict, evaluated: dict, limit: int) -> list[dict]:
+    ranked = sorted(
+        build_config_space(),
+        key=lambda candidate: config_distance(candidate, best),
+    )
+    queue = []
+    for candidate in ranked:
+        if config_key(candidate) in evaluated:
+            continue
+        queue.append(candidate)
+        if len(queue) >= limit:
+            break
+    return queue
 
 
 def mutate_config(base: dict, observation: dict, loop_index: int) -> list[dict]:
@@ -169,7 +211,7 @@ def main() -> None:
     parser.add_argument("--bin", default="target/release/edgesvg")
     parser.add_argument("--golden-dir", default="golden_data")
     parser.add_argument("--limit", type=int, default=90)
-    parser.add_argument("--loops", type=int, default=10)
+    parser.add_argument("--loops", type=int, default=50)
     parser.add_argument("--output-dir", default="benchmark_runs/optimization_frontier")
     args = parser.parse_args()
 
@@ -241,6 +283,8 @@ def main() -> None:
         queue = [candidate for candidate in decision if config_key(candidate) not in evaluated]
         if config_key(best["config"]) != key:
             queue.insert(0, best["config"])
+        if not queue:
+            queue = next_unexplored_configs(best["config"], evaluated, 6)
         if not queue:
             queue = mutate_config(best["config"], observe(best), loop_index + 1)
         print(f"act queued={queue}", flush=True)

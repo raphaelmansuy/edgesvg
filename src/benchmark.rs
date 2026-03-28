@@ -5,7 +5,9 @@ use anyhow::Result;
 use serde::Serialize;
 use walkdir::WalkDir;
 
-use crate::metrics::render_svg_file_to_png;
+use crate::metrics::{
+    render_svg_file_to_png_with_min_longest_side, BENCHMARK_REFERENCE_MIN_LONGEST_SIDE,
+};
 use crate::pipeline::{vectorize, write_svg, VectorizeOptions};
 use crate::types::VectorizationReport;
 
@@ -96,6 +98,12 @@ pub fn benchmark_golden_data(
 ) -> Result<BenchmarkReport> {
     let raster_dir = work_dir.join("rendered_inputs");
     let output_dir = work_dir.join("vectorized");
+    if raster_dir.exists() {
+        std::fs::remove_dir_all(&raster_dir)?;
+    }
+    if output_dir.exists() {
+        std::fs::remove_dir_all(&output_dir)?;
+    }
     std::fs::create_dir_all(&raster_dir)?;
     std::fs::create_dir_all(&output_dir)?;
 
@@ -114,7 +122,11 @@ pub fn benchmark_golden_data(
         if let Some(parent) = raster_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        render_svg_file_to_png(&reference_svg, &raster_path)?;
+        render_svg_file_to_png_with_min_longest_side(
+            &reference_svg,
+            &raster_path,
+            BENCHMARK_REFERENCE_MIN_LONGEST_SIDE,
+        )?;
 
         let output = output_dir.join(relative).with_extension("svg");
         let started = Instant::now();

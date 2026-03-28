@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::analysis::analyze_image;
 use crate::metrics::compute_metrics;
-use crate::preprocess::{adaptive_trace_settings, preprocess_image};
+use crate::preprocess::{
+    adaptive_trace_settings, build_monochrome_alpha_mask, detect_sparse_monochrome_color,
+    preprocess_image, MONOCHROME_MASK_ALPHA_THRESHOLD,
+};
 use crate::svg::optimize_svg;
 use crate::types::{Complexity, ImageAnalysis, ImageKind, QualityPreset, VectorizationReport};
 use crate::vectorizer::trace_to_svg;
@@ -44,10 +47,20 @@ pub fn vectorize_image(
     options: &VectorizeOptions,
 ) -> Result<(String, VectorizationReport)> {
     let source_image = image::DynamicImage::ImageRgba8(original.to_rgba8());
+    let source_rgba = source_image.to_rgba8();
     let flattened = flatten_transparency_to_white(&source_image.to_rgba8());
     let flattened_image = image::DynamicImage::ImageRgba8(flattened);
-    let analysis = analyze_image(&flattened_image);
+    let analysis_image = if has_substantial_transparency(&source_image) {
+        &source_image
+    } else {
+        &flattened_image
+    };
+    let analysis = analyze_image(analysis_image);
     let trace_input = trace_candidate_image(&source_image, &flattened_image, &analysis)?;
+    let mut trace_candidates = vec![trace_input];
+    if let Some(mask_candidate) = sparse_monochrome_mask_candidate(&source_rgba, &analysis) {
+        trace_candidates.push(mask_candidate);
+    }
     let qualities = quality_search_order(
         &analysis,
         options.quality.unwrap_or_default(),
@@ -57,27 +70,25 @@ pub fn vectorize_image(
     let mut best: Option<(String, VectorizationReport, f64)> = None;
     for quality in qualities {
         let settings = adaptive_trace_settings(&analysis, quality);
-        let svg = trace_image(&trace_input, &settings)?;
-        let svg = optimize_svg(&svg, settings.optimizer_precision);
-        let metrics = compute_metrics(original, &svg)?;
-        let report = VectorizationReport {
-            analysis: analysis.clone(),
-            settings,
-            quality_preset: quality,
-            metrics: metrics.clone(),
-        };
-        let score = candidate_score(&analysis, &metrics, options.max_file_size);
+        for candidate in &trace_candidates {
+            let svg = trace_image(candidate, &settings)?;
+            let svg = optimize_svg(&svg, settings.optimizer_precision);
+            let metrics = compute_metrics(original, &svg)?;
+            let report = VectorizationReport {
+                analysis: analysis.clone(),
+                settings: settings.clone(),
+                quality_preset: quality,
+                metrics: metrics.clone(),
+            };
+            let score = candidate_score(&analysis, &metrics, options.max_file_size);
 
-        if best
-            .as_ref()
-            .map(|(_, _, best_score)| score > *best_score)
-            .unwrap_or(true)
-        {
-            best = Some((svg.clone(), report.clone(), score));
-        }
-
-        if metrics.ssim >= options.target_ssim && metrics.file_size <= options.max_file_size {
-            return Ok((svg, report));
+            if best
+                .as_ref()
+                .map(|(_, _, best_score)| score > *best_score)
+                .unwrap_or(true)
+            {
+                best = Some((svg, report, score));
+            }
         }
     }
 
@@ -133,6 +144,24 @@ fn has_substantial_transparency(image: &image::DynamicImage) -> bool {
     let total = (rgba.width() as usize * rgba.height() as usize).max(1);
     let transparent = rgba.pixels().filter(|pixel| pixel[3] < 250).count();
     transparent as f64 / total as f64 > 0.05
+}
+
+fn sparse_monochrome_mask_candidate(
+    source: &RgbaImage,
+    analysis: &ImageAnalysis,
+) -> Option<RgbaImage> {
+    if !matches!(analysis.image_type, ImageKind::Icon | ImageKind::Logo)
+        || analysis.alpha_coverage >= 0.95
+    {
+        return None;
+    }
+
+    let color = detect_sparse_monochrome_color(source)?;
+    Some(build_monochrome_alpha_mask(
+        source,
+        color,
+        MONOCHROME_MASK_ALPHA_THRESHOLD,
+    ))
 }
 
 fn quality_search_order(
@@ -301,6 +330,7 @@ mod tests {
             top_50_coverage: 1.0,
             color_variance: 20.0,
             edge_density: 0.1,
+            alpha_coverage: 1.0,
             dominant_colors: vec!["#000000".to_string()],
             image_type: ImageKind::Icon,
             complexity: Complexity::Medium,
@@ -313,6 +343,7 @@ mod tests {
             top_50_coverage: 0.28,
             color_variance: 92.0,
             edge_density: 0.24,
+            alpha_coverage: 1.0,
             dominant_colors: vec!["#000000".to_string()],
             image_type: ImageKind::Photo,
             complexity: Complexity::Complex,
@@ -387,6 +418,7 @@ mod tests {
             top_50_coverage: 1.0,
             color_variance: 45.0,
             edge_density: 0.2,
+            alpha_coverage: 1.0,
             dominant_colors: vec!["#000000".to_string()],
             image_type: ImageKind::Icon,
             complexity: Complexity::Medium,

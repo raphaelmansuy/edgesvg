@@ -29,7 +29,7 @@ SUITES = {
         "max_iterations": 4,
         "target_ssim": 0.998,
         "max_file_size": 100_000,
-        "work_dir": "benchmark_runs/golden_full_current",
+        "work_dir": "benchmark_runs/golden_full",
     },
 }
 
@@ -64,6 +64,28 @@ def quality_buckets(entries: list[dict]) -> dict:
         "watch": sum(0.75 <= value < 0.85 for value in fidelity),
         "strong": sum(value >= 0.90 for value in fidelity),
     }
+
+
+def entry_id(entry: dict) -> str:
+    return entry.get("reference") or Path(entry["input"]).name
+
+
+def validate_baseline(current: dict, baseline: dict) -> tuple[bool, str]:
+    required = ["average_fidelity_score", "average_ssim", "entries"]
+    missing = [key for key in required if key not in baseline]
+    if missing:
+        return False, f"missing keys: {', '.join(missing)}"
+
+    current_ids = {entry_id(entry) for entry in current["entries"]}
+    baseline_ids = {entry_id(entry) for entry in baseline["entries"]}
+    if not current_ids or not baseline_ids:
+        return False, "empty entry set"
+
+    overlap = len(current_ids & baseline_ids) / max(1, len(current_ids))
+    if overlap < 0.8:
+        return False, f"corpus mismatch overlap={overlap:.2f}"
+
+    return True, "ok"
 
 
 def print_report(report: dict) -> None:
@@ -246,7 +268,14 @@ def main() -> None:
 
     if args.baseline_json:
         baseline = load_json(root / args.baseline_json)
-        print_delta(report, baseline)
+        compatible, reason = validate_baseline(report, baseline)
+        if compatible:
+            print_delta(report, baseline)
+        else:
+            print(f"\n{line()}")
+            print("Delta vs Baseline")
+            print(line("-"))
+            print(f"skipped incompatible baseline: {reason}")
 
     print(f"\n{line()}")
     print("Artifacts")

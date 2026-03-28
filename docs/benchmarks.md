@@ -32,8 +32,15 @@ Generated locations:
 
 - `benchmark_runs/golden_smoke`
 - `benchmark_runs/golden_sample`
-- `benchmark_runs/golden_full_current`
+- `benchmark_runs/golden_full`
 - `benchmark_runs/optimization_frontier`
+
+## Golden Data Notes
+
+- `golden_data/icons` now uses `Heroicons` optimized `24/solid` SVGs as the icon reference corpus.
+- Golden SVG references are rasterized at a minimum longest-side resolution of `1024px` during `benchmark-golden` runs to preserve enough signal for edge and topology metrics.
+- `benchmark-golden` now clears stale `rendered_inputs/` and `vectorized/` artifacts inside the target work dir before each run so outdated low-resolution PNGs cannot pollute new reports.
+- The previous legacy icon corpus is backed up under `benchmark_runs/dataset_backups/icons_legacy_feather`.
 
 ## Library Access
 
