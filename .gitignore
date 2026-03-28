@@ -16,6 +16,12 @@
 *.profdata
 coverage/
 
+# Demo app build artifacts
+demo/node_modules/
+demo/dist/
+demo/.vite/
+demo/wasm-pkg/
+
 # Tooling caches
 .DS_Store
 Thumbs.db
