@@ -355,6 +355,7 @@ mod tests {
             width: 256,
             height: 256,
             unique_colors: 24,
+            effective_colors: 1,
             top_10_coverage: 0.98,
             top_50_coverage: 1.0,
             color_variance: 0.0,

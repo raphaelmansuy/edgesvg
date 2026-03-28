@@ -1,0 +1,8 @@
+Golden icon corpus source:
+- Upstream: https://github.com/tailwindlabs/heroicons
+- License: MIT
+- Variant: optimized/24/solid
+- Selection: first 127 SVGs in sorted order, replacing the previous legacy icon set
+
+Legacy backup:
+- benchmark_runs/dataset_backups/icons_legacy_feather

@@ -26,6 +26,9 @@ def compactness_score(report: dict) -> float:
 
 
 def score(report: dict) -> float:
+    robust_score = report.get("robust_benchmark_score")
+    if robust_score is not None:
+        return robust_score
     return (
         report["average_fidelity_score"] * 0.74
         + report["average_edge_f1"] * 0.10
@@ -142,22 +145,34 @@ def mutate_config(base: dict, observation: dict, loop_index: int) -> list[dict]:
 
 
 def observe(report: dict) -> dict:
+    distributions = report.get("distributions", {})
+    gates = report.get("quality_gates", {})
     return {
+        "robust_benchmark_score": report.get("robust_benchmark_score", score(report)),
         "average_fidelity_score": report["average_fidelity_score"],
+        "p10_fidelity_score": distributions.get("fidelity_score", {}).get(
+            "p10", report["average_fidelity_score"]
+        ),
+        "min_fidelity_score": distributions.get("fidelity_score", {}).get(
+            "min", report["average_fidelity_score"]
+        ),
         "average_ssim": report["average_ssim"],
         "average_edge_f1": report["average_edge_f1"],
+        "p10_edge_f1": distributions.get("edge_f1", {}).get("p10", report["average_edge_f1"]),
         "average_foreground_iou": report["average_foreground_iou"],
         "average_color_similarity": report["average_color_similarity"],
         "average_file_size": report["average_file_size"],
         "average_path_count": report["average_path_count"],
         "average_elapsed_ms": report["average_elapsed_ms"],
+        "fidelity_below_0_85": gates.get("fidelity_below_0_85", 0),
+        "edge_f1_below_0_85": gates.get("edge_f1_below_0_85", 0),
     }
 
 
 def orient(observation: dict) -> str:
-    if observation["average_fidelity_score"] < 0.88:
+    if observation["min_fidelity_score"] < 0.75 or observation["fidelity_below_0_85"] > 0:
         return "fidelity-limited"
-    if observation["average_edge_f1"] < 0.86:
+    if observation["p10_edge_f1"] < 0.85 or observation["edge_f1_below_0_85"] > 0:
         return "edge-limited"
     if observation["average_file_size"] > 3_000 or observation["average_path_count"] > 24:
         return "compactness-limited"
@@ -173,8 +188,11 @@ def run_trial(
     limit: int,
     index: int,
 ) -> dict:
-    trial_dir = output_dir / f"trial_{index:02d}_{cfg['quality']}_{cfg['max_iterations']}"
-    json_path = trial_dir / "report.json"
+    trials_dir = output_dir / "trials"
+    trial_dir = trials_dir / f"trial_{index:02d}_{cfg['quality']}_{cfg['max_iterations']}"
+    reports_dir = trial_dir / "reports"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    json_path = reports_dir / "report.json"
     cmd = [
         str(bin_path),
         "benchmark-golden",
@@ -218,7 +236,10 @@ def main() -> None:
     root = Path.cwd()
     bin_path = root / args.bin
     output_dir = root / args.output_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir = output_dir / "reports"
+    trials_dir = output_dir / "trials"
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    trials_dir.mkdir(parents=True, exist_ok=True)
 
     evaluated = {}
     history = []
@@ -265,11 +286,14 @@ def main() -> None:
 
         print(
             "orient phenotype={phenotype} score={score:.4f} fidelity={fidelity:.4f} "
-            "edge_f1={edge_f1:.4f} size={size:.1f}KB paths={paths:.1f} time={time:.1f}ms".format(
+            "fidelity_p10={fidelity_p10:.4f} edge_f1={edge_f1:.4f} edge_p10={edge_p10:.4f} "
+            "size={size:.1f}KB paths={paths:.1f} time={time:.1f}ms".format(
                 phenotype=phenotype,
                 score=result["score"],
                 fidelity=result["average_fidelity_score"],
+                fidelity_p10=result["p10_fidelity_score"],
                 edge_f1=result["average_edge_f1"],
+                edge_p10=result["p10_edge_f1"],
                 size=result["average_file_size"] / 1024.0,
                 paths=result["average_path_count"],
                 time=result["average_elapsed_ms"],
@@ -290,8 +314,8 @@ def main() -> None:
         print(f"act queued={queue}", flush=True)
 
     ranked = sorted(evaluated.values(), key=lambda item: item["score"], reverse=True)
-    summary_path = output_dir / "summary.json"
-    loops_path = output_dir / "loops.json"
+    summary_path = reports_dir / "summary.json"
+    loops_path = reports_dir / "loops.json"
     summary_path.write_text(json.dumps(ranked, indent=2))
     loops_path.write_text(json.dumps(history, indent=2))
 

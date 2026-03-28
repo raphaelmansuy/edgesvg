@@ -122,6 +122,29 @@ def print_report(report: dict) -> None:
             critical=buckets["critical"],
         )
     )
+    if "robust_benchmark_score" in report:
+        print(f"robust_score={report['robust_benchmark_score']:.4f}")
+    if "quality_gates" in report:
+        gates = report["quality_gates"]
+        print(
+            "gate_failures fidelity<0.75={f075} fidelity<0.85={f085} edge<0.75={e075} "
+            "edge<0.85={e085} color<0.75={c075} topo<0.50={t050}".format(
+                f075=gates.get("fidelity_below_0_75", 0),
+                f085=gates.get("fidelity_below_0_85", 0),
+                e075=gates.get("edge_f1_below_0_75", 0),
+                e085=gates.get("edge_f1_below_0_85", 0),
+                c075=gates.get("color_below_0_75", 0),
+                t050=gates.get("topology_below_0_50", 0),
+            )
+        )
+    dataset = report.get("dataset", {})
+    if dataset.get("groups"):
+        print("dataset_groups=" + ", ".join(f"{item['label']}:{item['entries']}" for item in dataset["groups"]))
+    if dataset.get("kind_complexities"):
+        print(
+            "dataset_mix="
+            + ", ".join(f"{item['label']}:{item['entries']}" for item in dataset["kind_complexities"])
+        )
 
     print(f"\n{line()}")
     print("By Group")
@@ -176,6 +199,7 @@ def print_delta(current: dict, baseline: dict) -> None:
         ("average_edge_f1", "edge_f1", False),
         ("average_foreground_iou", "fg_iou", False),
         ("average_color_similarity", "color", False),
+        ("robust_benchmark_score", "robust_score", False),
         ("average_psnr", "psnr", False),
         ("average_mae", "mae", True),
         ("average_file_size", "size_bytes", True),
@@ -223,9 +247,11 @@ def main() -> None:
 
     bin_path = root / args.bin
     work_dir = root / cfg["work_dir"]
-    json_path = work_dir / "report.json"
-    markdown_path = work_dir / "report.md"
+    reports_dir = work_dir / "reports"
+    json_path = reports_dir / "report.json"
+    markdown_path = reports_dir / "report.md"
     work_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         str(bin_path),

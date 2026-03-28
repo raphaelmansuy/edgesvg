@@ -22,7 +22,11 @@ make bench-full
 Benchmark reports contain:
 
 - overall averages
+- robust benchmark score with tail-aware percentiles
+- deterministic balanced sampling for limited golden runs
 - per-group summaries
+- dataset mix by group and analyzed type/complexity
+- explicit quality gate failures
 - per-entry metrics
 - lowest-fidelity assets for triage
 - JSON for tooling
@@ -30,16 +34,21 @@ Benchmark reports contain:
 
 Generated locations:
 
-- `benchmark_runs/golden_smoke`
-- `benchmark_runs/golden_sample`
-- `benchmark_runs/golden_full`
-- `benchmark_runs/optimization_frontier`
+- `benchmark_runs/golden_smoke/artifacts`
+- `benchmark_runs/golden_smoke/reports`
+- `benchmark_runs/golden_sample/artifacts`
+- `benchmark_runs/golden_sample/reports`
+- `benchmark_runs/golden_full/artifacts`
+- `benchmark_runs/golden_full/reports`
+- `benchmark_runs/optimization_frontier/trials`
+- `benchmark_runs/optimization_frontier/reports`
 
 ## Golden Data Notes
 
 - `golden_data/icons` now uses `Heroicons` optimized `24/solid` SVGs as the icon reference corpus.
 - Golden SVG references are rasterized at a minimum longest-side resolution of `1024px` during `benchmark-golden` runs to preserve enough signal for edge and topology metrics.
-- `benchmark-golden` now clears stale `rendered_inputs/` and `vectorized/` artifacts inside the target work dir before each run so outdated low-resolution PNGs cannot pollute new reports.
+- `benchmark-golden` now clears stale artifacts inside `artifacts/rendered_inputs` and `artifacts/vectorized` before each run so outdated PNGs and SVGs cannot pollute new reports.
+- When a `limit` is provided, the benchmark uses deterministic balanced sampling across top-level golden groups instead of truncating the lexically first files.
 - The previous legacy icon corpus is backed up under `benchmark_runs/dataset_backups/icons_legacy_feather`.
 
 ## Library Access

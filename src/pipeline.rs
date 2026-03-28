@@ -134,13 +134,22 @@ fn trace_candidate_image(
 ) -> Result<RgbaImage> {
     if matches!(analysis.image_type, ImageKind::Photo) {
         Ok(flatten_transparency_to_white(&source.to_rgba8()))
-    } else if has_substantial_transparency(source)
-        && matches!(analysis.image_type, ImageKind::Logo | ImageKind::Icon)
+    } else if preserve_transparent_logo_icon_source(source, analysis)
     {
         Ok(source.to_rgba8())
     } else {
         preprocess_image(flattened, analysis, None)
     }
+}
+
+fn preserve_transparent_logo_icon_source(
+    source: &image::DynamicImage,
+    analysis: &ImageAnalysis,
+) -> bool {
+    has_substantial_transparency(source)
+        && matches!(analysis.image_type, ImageKind::Logo | ImageKind::Icon)
+        && analysis.effective_colors <= 12
+        && analysis.top_10_coverage > 0.92
 }
 
 fn has_substantial_transparency(image: &image::DynamicImage) -> bool {
@@ -311,6 +320,17 @@ fn complexity_budget(analysis: &ImageAnalysis, smooth_gradient: f64) -> (f64, f6
         (ImageKind::Photo, Complexity::Complex) => (32_000.0, 144.0),
     };
 
+    let multicolor_flat_graphic = matches!(analysis.image_type, ImageKind::Icon | ImageKind::Logo)
+        && analysis.alpha_coverage < 0.85
+        && analysis.edge_density < 0.05
+        && analysis.effective_colors > 12;
+    if multicolor_flat_graphic {
+        let detail_factor = ((analysis.effective_colors as f64 - 12.0) / 36.0).clamp(0.0, 1.0);
+        let size_multiplier = 1.0 + detail_factor * 6.0;
+        let path_multiplier = 1.0 + detail_factor * 1.5;
+        return (base.0 * size_multiplier, base.1 * path_multiplier);
+    }
+
     if matches!(analysis.image_type, ImageKind::Illustration | ImageKind::Photo) {
         let size_multiplier = 1.0 + smooth_gradient * 2.2;
         let path_multiplier = 1.0 + smooth_gradient * 2.6;
@@ -385,13 +405,16 @@ pub fn vectorize_icon(input_path: &Path) -> Result<(String, VectorizationReport)
 
 #[cfg(test)]
 mod tests {
+    use image::DynamicImage;
     use image::{Rgba, RgbaImage};
     use tempfile::tempdir;
 
     use crate::metrics::QualityMetrics;
     use crate::types::{Complexity, ImageAnalysis, ImageKind};
 
-    use super::{quality_search_order, vectorize, QualityPreset, VectorizeOptions};
+    use super::{
+        quality_search_order, trace_candidate_image, QualityPreset, VectorizeOptions, vectorize,
+    };
 
     #[test]
     fn quality_search_starts_at_requested_preset_and_climbs() {
@@ -399,6 +422,7 @@ mod tests {
             width: 24,
             height: 24,
             unique_colors: 8,
+            effective_colors: 4,
             top_10_coverage: 0.98,
             top_50_coverage: 1.0,
             color_variance: 20.0,
@@ -412,6 +436,7 @@ mod tests {
             width: 640,
             height: 480,
             unique_colors: 4_096,
+            effective_colors: 512,
             top_10_coverage: 0.18,
             top_50_coverage: 0.28,
             color_variance: 92.0,
@@ -487,6 +512,7 @@ mod tests {
             width: 24,
             height: 24,
             unique_colors: 24,
+            effective_colors: 8,
             top_10_coverage: 0.94,
             top_50_coverage: 1.0,
             color_variance: 45.0,
@@ -545,6 +571,7 @@ mod tests {
             width: 989,
             height: 1024,
             unique_colors: 24_514,
+            effective_colors: 512,
             top_10_coverage: 0.32,
             top_50_coverage: 0.56,
             color_variance: 84.0,
@@ -595,5 +622,40 @@ mod tests {
             super::candidate_score(&analysis, &richer, 100_000)
                 > super::candidate_score(&analysis, &compact, 100_000)
         );
+    }
+
+    #[test]
+    fn multicolor_transparent_icons_use_flattened_preprocess_candidate() {
+        let mut rgba = RgbaImage::new(32, 32);
+        for y in 8..24 {
+            for x in 8..24 {
+                let color = if x < 16 {
+                    Rgba([66, 133, 244, 180])
+                } else {
+                    Rgba([234, 67, 53, 180])
+                };
+                rgba.put_pixel(x, y, color);
+            }
+        }
+
+        let source = DynamicImage::ImageRgba8(rgba.clone());
+        let flattened = DynamicImage::ImageRgba8(super::flatten_transparency_to_white(&rgba));
+        let analysis = ImageAnalysis {
+            width: 32,
+            height: 32,
+            unique_colors: 40,
+            effective_colors: 16,
+            top_10_coverage: 0.96,
+            top_50_coverage: 1.0,
+            color_variance: 60.0,
+            edge_density: 0.02,
+            alpha_coverage: 0.25,
+            dominant_colors: vec!["#4285F4".to_string()],
+            image_type: ImageKind::Icon,
+            complexity: Complexity::Medium,
+        };
+
+        let candidate = trace_candidate_image(&source, &flattened, &analysis).unwrap();
+        assert!(candidate.pixels().all(|pixel| pixel[3] == 255));
     }
 }

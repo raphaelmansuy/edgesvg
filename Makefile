@@ -62,7 +62,7 @@ bench-sample: build
 		--suite sample \
 		--bin $(BIN) \
 		--golden-dir $(GOLDEN_DIR) \
-		--baseline-json benchmark_runs/golden_full/report.json \
+		--baseline-json benchmark_runs/golden_full/reports/report.json \
 		--limit $(SAMPLE_LIMIT)
 
 bench-full: build

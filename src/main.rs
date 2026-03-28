@@ -559,7 +559,11 @@ fn main() -> Result<()> {
                 "{}",
                 serde_json::to_string_pretty(&json!({
                     "entries": report.entries.len(),
+                    "dataset": report.dataset,
                     "groups": report.groups,
+                    "distributions": report.distributions,
+                    "quality_gates": report.quality_gates,
+                    "robust_benchmark_score": report.robust_benchmark_score,
                     "average_fidelity_score": report.average_fidelity_score,
                     "average_ssim": report.average_ssim,
                     "average_gradient_similarity": report.average_gradient_similarity,
@@ -612,7 +616,11 @@ fn main() -> Result<()> {
                 "{}",
                 serde_json::to_string_pretty(&json!({
                     "entries": report.entries.len(),
+                    "dataset": report.dataset,
                     "groups": report.groups,
+                    "distributions": report.distributions,
+                    "quality_gates": report.quality_gates,
+                    "robust_benchmark_score": report.robust_benchmark_score,
                     "average_fidelity_score": report.average_fidelity_score,
                     "average_ssim": report.average_ssim,
                     "average_gradient_similarity": report.average_gradient_similarity,

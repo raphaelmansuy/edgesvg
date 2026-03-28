@@ -313,7 +313,11 @@ fn color_image_to_svg(mut img: ColorImage, config: ConversionConfig) -> Result<S
 }
 
 fn binary_image_to_svg(img: ColorImage, config: ConversionConfig) -> Result<SvgFile, String> {
-    let img = img.to_binary_image(|x| x.r < 128);
+    let img = img.to_binary_image(|pixel| {
+        let luma =
+            (u16::from(pixel.r) * 299 + u16::from(pixel.g) * 587 + u16::from(pixel.b) * 114) / 1000;
+        pixel.a > 16 && luma < 250
+    });
     let width = img.width;
     let height = img.height;
     let clusters = img.to_clusters(false);
