@@ -178,11 +178,17 @@ fn photo_gradient_candidate(source: &RgbaImage, analysis: &ImageAnalysis) -> Opt
         return None;
     }
 
-    let scale = 320.0 / longest_side as f32;
+    let target_longest_side = if analysis.unique_colors > 4_000 && analysis.edge_density < 0.025
+    {
+        448.0
+    } else {
+        320.0
+    };
+    let scale = target_longest_side / longest_side as f32;
     let width = ((source.width() as f32) * scale).round().max(1.0) as u32;
     let height = ((source.height() as f32) * scale).round().max(1.0) as u32;
     let resized = image::imageops::resize(source, width, height, FilterType::Lanczos3);
-    let palette_size = if analysis.color_variance > 90.0 {
+    let palette_size = if analysis.unique_colors > 4_000 || analysis.color_variance > 90.0 {
         8
     } else {
         12
