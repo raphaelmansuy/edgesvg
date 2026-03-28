@@ -3,10 +3,13 @@ use image::{DynamicImage, Pixel, Rgba, RgbaImage};
 use resvg::{tiny_skia, usvg};
 use serde::{Deserialize, Serialize};
 
+pub const BENCHMARK_REFERENCE_MIN_LONGEST_SIDE: u32 = 1024;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QualityMetrics {
     pub ssim: f64,
     pub ssim_perceptual: f64,
+    pub gradient_similarity: f64,
     pub edge_similarity: f64,
     pub edge_precision: f64,
     pub edge_recall: f64,
@@ -69,23 +72,31 @@ pub fn compute_metrics(original: &DynamicImage, svg: &str) -> Result<QualityMetr
 
     let ssim = compute_ssim(&original_gray, &rendered_gray);
     let ssim_perceptual = compute_ssim(&original_blurred_gray, &rendered_blurred_gray);
+    let gradient_similarity = compute_gradient_similarity(
+        &original_blurred_gray,
+        &rendered_blurred_gray,
+        original.width(),
+        original.height(),
+    );
     let edge = edge_metrics(&original, &rendered);
     let delta_e = average_delta_e(&original, &rendered);
     let color_similarity = (1.0 - (delta_e / 40.0).min(1.0)).clamp(0.0, 1.0);
     let foreground_iou = foreground_iou(&original, &rendered);
     let topology_score = topology_score(&original, &rendered);
-    let fidelity_score = (ssim * 0.28
-        + ssim_perceptual * 0.17
-        + edge.f1 * 0.18
-        + edge.iou * 0.12
+    let fidelity_score = (ssim * 0.24
+        + ssim_perceptual * 0.14
+        + gradient_similarity * 0.13
+        + edge.f1 * 0.15
+        + edge.iou * 0.10
         + foreground_iou * 0.10
         + color_similarity * 0.10
-        + topology_score * 0.05)
+        + topology_score * 0.04)
         .clamp(0.0, 1.0);
 
     Ok(QualityMetrics {
         ssim,
         ssim_perceptual,
+        gradient_similarity,
         edge_similarity: edge.iou,
         edge_precision: edge.precision,
         edge_recall: edge.recall,
@@ -120,6 +131,14 @@ pub fn render_svg_to_image(svg: &str, width: u32, height: u32) -> Result<RgbaIma
 }
 
 pub fn render_svg_file_to_png(input: &std::path::Path, output: &std::path::Path) -> Result<()> {
+    render_svg_file_to_png_with_min_longest_side(input, output, 0)
+}
+
+pub fn render_svg_file_to_png_with_min_longest_side(
+    input: &std::path::Path,
+    output: &std::path::Path,
+    min_longest_side: u32,
+) -> Result<()> {
     let mut options = usvg::Options {
         resources_dir: input
             .canonicalize()
@@ -130,10 +149,24 @@ pub fn render_svg_file_to_png(input: &std::path::Path, output: &std::path::Path)
     options.fontdb_mut().load_system_fonts();
     let data = std::fs::read(input)?;
     let tree = usvg::Tree::from_data(&data, &options).map_err(|e| anyhow!("invalid svg: {e}"))?;
-    let size = tree.size().to_int_size();
-    let mut pixmap = tiny_skia::Pixmap::new(size.width(), size.height())
-        .ok_or_else(|| anyhow!("cannot allocate pixmap"))?;
-    resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
+    let base_size = tree.size().to_int_size();
+    let base_width = base_size.width().max(1);
+    let base_height = base_size.height().max(1);
+    let longest_side = base_width.max(base_height);
+    let scale = if min_longest_side > 0 && longest_side < min_longest_side {
+        min_longest_side as f32 / longest_side as f32
+    } else {
+        1.0
+    };
+    let width = ((base_width as f32) * scale).round().max(1.0) as u32;
+    let height = ((base_height as f32) * scale).round().max(1.0) as u32;
+    let mut pixmap =
+        tiny_skia::Pixmap::new(width, height).ok_or_else(|| anyhow!("cannot allocate pixmap"))?;
+    let transform = tiny_skia::Transform::from_scale(
+        width as f32 / base_width as f32,
+        height as f32 / base_height as f32,
+    );
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
     pixmap.save_png(output)?;
     Ok(())
 }
@@ -187,6 +220,40 @@ fn compute_ssim(left: &[f64], right: &[f64]) -> f64 {
     let value = ((2.0 * mean_left * mean_right + c1) * (2.0 * covariance + c2))
         / ((mean_left.powi(2) + mean_right.powi(2) + c1) * (var_left + var_right + c2));
     value.clamp(0.0, 1.0)
+}
+
+fn compute_gradient_similarity(left: &[f64], right: &[f64], width: u32, height: u32) -> f64 {
+    let left_gradients = sobel_magnitudes(left, width, height);
+    let right_gradients = sobel_magnitudes(right, width, height);
+    compute_ssim(&left_gradients, &right_gradients)
+}
+
+fn sobel_magnitudes(gray: &[f64], width: u32, height: u32) -> Vec<f64> {
+    let width = width as usize;
+    let height = height as usize;
+    let mut magnitudes = vec![0.0; gray.len()];
+    if width < 3 || height < 3 {
+        return magnitudes;
+    }
+
+    let index = |x: usize, y: usize| -> usize { y * width + x };
+    for y in 1..height - 1 {
+        for x in 1..width - 1 {
+            let sample = |dx: isize, dy: isize| -> f64 {
+                gray[index((x as isize + dx) as usize, (y as isize + dy) as usize)]
+            };
+            let gx = -sample(-1, -1) + sample(1, -1) - 2.0 * sample(-1, 0) + 2.0 * sample(1, 0)
+                - sample(-1, 1)
+                + sample(1, 1);
+            let gy = -sample(-1, -1) - 2.0 * sample(0, -1) - sample(1, -1)
+                + sample(-1, 1)
+                + 2.0 * sample(0, 1)
+                + sample(1, 1);
+            magnitudes[index(x, y)] = (gx * gx + gy * gy).sqrt().min(255.0);
+        }
+    }
+
+    magnitudes
 }
 
 struct EdgeMetrics {
@@ -489,4 +556,38 @@ fn rgb_to_lab(r: u8, g: u8, b: u8) -> (f64, f64, f64) {
     let fy = f(yr);
     let fz = f(zr);
     (116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use tempfile::tempdir;
+
+    use super::{
+        render_svg_file_to_png_with_min_longest_side, BENCHMARK_REFERENCE_MIN_LONGEST_SIDE,
+    };
+
+    #[test]
+    fn benchmark_reference_render_upscales_small_svg_without_distorting_aspect_ratio() {
+        let dir = tempdir().unwrap();
+        let input = dir.path().join("icon.svg");
+        let output = dir.path().join("icon.png");
+        fs::write(
+            &input,
+            r##"<svg xmlns="http://www.w3.org/2000/svg" width="24" height="12" viewBox="0 0 24 12"><rect width="24" height="12" fill="#000"/></svg>"##,
+        )
+        .unwrap();
+
+        render_svg_file_to_png_with_min_longest_side(
+            &input,
+            &output,
+            BENCHMARK_REFERENCE_MIN_LONGEST_SIDE,
+        )
+        .unwrap();
+
+        let image = image::open(output).unwrap();
+        assert_eq!(image.width(), BENCHMARK_REFERENCE_MIN_LONGEST_SIDE);
+        assert_eq!(image.height(), BENCHMARK_REFERENCE_MIN_LONGEST_SIDE / 2);
+    }
 }

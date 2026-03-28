@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
+use image::imageops::FilterType;
 use image::{Rgba, RgbaImage};
 use serde::{Deserialize, Serialize};
 
@@ -8,7 +9,7 @@ use crate::analysis::analyze_image;
 use crate::metrics::compute_metrics;
 use crate::preprocess::{
     adaptive_trace_settings, build_monochrome_alpha_mask, detect_sparse_monochrome_color,
-    preprocess_image, MONOCHROME_MASK_ALPHA_THRESHOLD,
+    preprocess_image, quantize_image, MONOCHROME_MASK_ALPHA_THRESHOLD,
 };
 use crate::svg::optimize_svg;
 use crate::types::{Complexity, ImageAnalysis, ImageKind, QualityPreset, VectorizationReport};
@@ -60,6 +61,9 @@ pub fn vectorize_image(
     let mut trace_candidates = vec![trace_input];
     if let Some(mask_candidate) = sparse_monochrome_mask_candidate(&source_rgba, &analysis) {
         trace_candidates.push(mask_candidate);
+    }
+    if let Some(photo_candidate) = photo_gradient_candidate(&source_rgba, &analysis) {
+        trace_candidates.push(photo_candidate);
     }
     let qualities = quality_search_order(
         &analysis,
@@ -162,6 +166,36 @@ fn sparse_monochrome_mask_candidate(
         color,
         MONOCHROME_MASK_ALPHA_THRESHOLD,
     ))
+}
+
+fn photo_gradient_candidate(source: &RgbaImage, analysis: &ImageAnalysis) -> Option<RgbaImage> {
+    if !matches!(analysis.image_type, ImageKind::Photo) || analysis.edge_density > 0.03 {
+        return None;
+    }
+
+    let longest_side = source.width().max(source.height());
+    if longest_side <= 320 {
+        return None;
+    }
+
+    let scale = 320.0 / longest_side as f32;
+    let width = ((source.width() as f32) * scale).round().max(1.0) as u32;
+    let height = ((source.height() as f32) * scale).round().max(1.0) as u32;
+    let resized = image::imageops::resize(source, width, height, FilterType::Lanczos3);
+    let palette_size = if analysis.color_variance > 90.0 {
+        8
+    } else {
+        12
+    };
+    let candidate = quantize_image(&resized, palette_size);
+    let candidate = image::DynamicImage::ImageRgba8(candidate)
+        .blur(0.5)
+        .to_rgba8();
+    Some(
+        image::DynamicImage::ImageRgba8(candidate)
+            .unsharpen(1.0, 1)
+            .to_rgba8(),
+    )
 }
 
 fn quality_search_order(
@@ -426,6 +460,7 @@ mod tests {
         let compact = QualityMetrics {
             ssim: 0.88,
             ssim_perceptual: 0.92,
+            gradient_similarity: 0.90,
             edge_similarity: 0.95,
             edge_precision: 0.96,
             edge_recall: 0.94,
@@ -443,6 +478,7 @@ mod tests {
         let bloated = QualityMetrics {
             ssim: 0.91,
             ssim_perceptual: 0.94,
+            gradient_similarity: 0.92,
             edge_similarity: 0.96,
             edge_precision: 0.97,
             edge_recall: 0.95,

@@ -27,6 +27,7 @@ pub struct BenchmarkGroupSummary {
     pub entries: usize,
     pub average_fidelity_score: f64,
     pub average_ssim: f64,
+    pub average_gradient_similarity: f64,
     pub average_psnr: f64,
     pub average_mae: f64,
     pub average_file_size: f64,
@@ -45,6 +46,7 @@ pub struct BenchmarkReport {
     pub groups: Vec<BenchmarkGroupSummary>,
     pub average_fidelity_score: f64,
     pub average_ssim: f64,
+    pub average_gradient_similarity: f64,
     pub average_psnr: f64,
     pub average_mae: f64,
     pub average_file_size: f64,
@@ -152,10 +154,11 @@ impl BenchmarkReport {
         let _ = std::fmt::Write::write_fmt(
             &mut out,
             format_args!(
-                "## Overall\n\n- Entries: {}\n- Average Fidelity Score: {:.4}\n- Average SSIM: {:.4}\n- Average PSNR: {:.2}\n- Average MAE: {:.2}\n- Average Edge Similarity: {:.4}\n- Average Edge F1: {:.4}\n- Average Foreground IoU: {:.4}\n- Average Color Similarity: {:.4}\n- Average Topology Score: {:.4}\n- Average Size: {:.1} KB\n- Average Paths: {:.1}\n- Average Time: {:.1} ms\n- Throughput: {:.2} images/s\n\n",
+                "## Overall\n\n- Entries: {}\n- Average Fidelity Score: {:.4}\n- Average SSIM: {:.4}\n- Average Gradient Similarity: {:.4}\n- Average PSNR: {:.2}\n- Average MAE: {:.2}\n- Average Edge Similarity: {:.4}\n- Average Edge F1: {:.4}\n- Average Foreground IoU: {:.4}\n- Average Color Similarity: {:.4}\n- Average Topology Score: {:.4}\n- Average Size: {:.1} KB\n- Average Paths: {:.1}\n- Average Time: {:.1} ms\n- Throughput: {:.2} images/s\n\n",
                 self.entries.len(),
                 self.average_fidelity_score,
                 self.average_ssim,
+                self.average_gradient_similarity,
                 self.average_psnr,
                 self.average_mae,
                 self.average_edge_similarity,
@@ -172,18 +175,19 @@ impl BenchmarkReport {
 
         out.push_str("## By Group\n\n");
         out.push_str(
-            "| Group | Entries | Fidelity | SSIM | Edge F1 | Color | Size (KB) | Paths | Time (ms) |\n",
+            "| Group | Entries | Fidelity | SSIM | Gradient | Edge F1 | Color | Size (KB) | Paths | Time (ms) |\n",
         );
-        out.push_str("|---|---:|---:|---:|---:|---:|---:|---:|---:|\n");
+        out.push_str("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n");
         for group in &self.groups {
             let _ = std::fmt::Write::write_fmt(
                 &mut out,
                 format_args!(
-                    "| {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.1} | {:.1} | {:.1} |\n",
+                    "| {} | {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.1} | {:.1} | {:.1} |\n",
                     group.group,
                     group.entries,
                     group.average_fidelity_score,
                     group.average_ssim,
+                    group.average_gradient_similarity,
                     group.average_edge_f1,
                     group.average_color_similarity,
                     group.average_file_size / 1024.0,
@@ -195,18 +199,19 @@ impl BenchmarkReport {
 
         out.push_str("\n## Entries\n\n");
         out.push_str(
-            "| Input | Fidelity | SSIM | Edge F1 | Color | Size (KB) | Paths | Preset |\n",
+            "| Input | Fidelity | SSIM | Gradient | Edge F1 | Color | Size (KB) | Paths | Preset |\n",
         );
-        out.push_str("|---|---:|---:|---:|---:|---:|---:|---|\n");
+        out.push_str("|---|---:|---:|---:|---:|---:|---:|---:|---|\n");
         for entry in &self.entries {
             let metrics = &entry.report.metrics;
             let _ = std::fmt::Write::write_fmt(
                 &mut out,
                 format_args!(
-                    "| {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.1} | {} | {:?} |\n",
+                    "| {} | {:.4} | {:.4} | {:.4} | {:.4} | {:.4} | {:.1} | {} | {:?} |\n",
                     entry_label(entry),
                     metrics.fidelity_score,
                     metrics.ssim,
+                    metrics.gradient_similarity,
                     metrics.edge_f1,
                     metrics.color_similarity,
                     metrics.file_size as f64 / 1024.0,
@@ -267,6 +272,11 @@ fn summarize_entries(entries: Vec<BenchmarkEntry>) -> BenchmarkReport {
         .sum::<f64>()
         / len;
     let average_ssim = entries.iter().map(|e| e.report.metrics.ssim).sum::<f64>() / len;
+    let average_gradient_similarity = entries
+        .iter()
+        .map(|e| e.report.metrics.gradient_similarity)
+        .sum::<f64>()
+        / len;
     let average_psnr = entries.iter().map(|e| e.report.metrics.psnr).sum::<f64>() / len;
     let average_mae = entries.iter().map(|e| e.report.metrics.mae).sum::<f64>() / len;
     let average_file_size = entries
@@ -318,6 +328,7 @@ fn summarize_entries(entries: Vec<BenchmarkEntry>) -> BenchmarkReport {
         groups,
         average_fidelity_score,
         average_ssim,
+        average_gradient_similarity,
         average_psnr,
         average_mae,
         average_file_size,
@@ -352,6 +363,11 @@ fn summarize_groups(entries: &[BenchmarkEntry]) -> Vec<BenchmarkGroupSummary> {
                     .sum::<f64>()
                     / len,
                 average_ssim: entries.iter().map(|e| e.report.metrics.ssim).sum::<f64>() / len,
+                average_gradient_similarity: entries
+                    .iter()
+                    .map(|e| e.report.metrics.gradient_similarity)
+                    .sum::<f64>()
+                    / len,
                 average_psnr: entries.iter().map(|e| e.report.metrics.psnr).sum::<f64>() / len,
                 average_mae: entries.iter().map(|e| e.report.metrics.mae).sum::<f64>() / len,
                 average_file_size: entries

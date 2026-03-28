@@ -96,11 +96,12 @@ def print_report(report: dict) -> None:
     print(line("-"))
     print(
         "entries={entries} fidelity={fidelity:.4f} ssim={ssim:.4f} psnr={psnr:.2f} mae={mae:.2f} "
-        "edge_iou={edge:.4f} edge_f1={edge_f1:.4f} fg_iou={fg_iou:.4f} color={color:.4f} "
+        "grad={gradient:.4f} edge_iou={edge:.4f} edge_f1={edge_f1:.4f} fg_iou={fg_iou:.4f} color={color:.4f} "
         "topo={topo:.4f} size={size} paths={paths:.1f} time={time:.1f}ms ips={ips:.2f}".format(
             entries=len(report["entries"]),
             fidelity=report["average_fidelity_score"],
             ssim=report["average_ssim"],
+            gradient=report.get("average_gradient_similarity", 0.0),
             psnr=report["average_psnr"],
             mae=report["average_mae"],
             size=format_kb(report["average_file_size"]),
@@ -128,12 +129,13 @@ def print_report(report: dict) -> None:
     for group in report["groups"]:
         print(
             "{group:14s} entries={entries:3d} fidelity={fidelity:.4f} ssim={ssim:.4f} "
-            "edge_f1={edge_f1:.4f} color={color:.4f} size={size:>8s} "
+            "grad={gradient:.4f} edge_f1={edge_f1:.4f} color={color:.4f} size={size:>8s} "
             "paths={paths:5.1f} time={time:6.1f}ms".format(
                 group=group["group"],
                 entries=group["entries"],
                 fidelity=group["average_fidelity_score"],
                 ssim=group["average_ssim"],
+                gradient=group.get("average_gradient_similarity", 0.0),
                 edge_f1=group["average_edge_f1"],
                 color=group["average_color_similarity"],
                 size=format_kb(group["average_file_size"]),
@@ -170,6 +172,7 @@ def print_delta(current: dict, baseline: dict) -> None:
     metrics = [
         ("average_fidelity_score", "fidelity", False),
         ("average_ssim", "ssim", False),
+        ("average_gradient_similarity", "gradient", False),
         ("average_edge_f1", "edge_f1", False),
         ("average_foreground_iou", "fg_iou", False),
         ("average_color_similarity", "color", False),
