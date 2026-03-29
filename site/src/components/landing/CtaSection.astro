@@ -1,0 +1,39 @@
+---
+interface Props {
+  title: string;
+  subtitle: string;
+  primaryHref: string;
+  secondaryHref: string;
+  primaryLabel?: string;
+  secondaryLabel?: string;
+}
+const { title, subtitle, primaryHref, secondaryHref, primaryLabel = 'Get Started', secondaryLabel = 'View on GitHub' } = Astro.props;
+---
+<section class="cta">
+  <div class="cta-inner">
+    <h2>{title}</h2>
+    <p>{subtitle}</p>
+    <div class="cta-actions">
+      <a href={primaryHref} class="cta-primary">{primaryLabel}</a>
+      <a href={secondaryHref} target="_blank" rel="noopener noreferrer" class="cta-secondary">{secondaryLabel}</a>
+    </div>
+  </div>
+</section>
+
+<style>
+  .cta {
+    padding: 5rem 2rem;
+    background: linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(59,130,246,0.06) 100%);
+    border-top: 1px solid rgba(16,185,129,0.15);
+    border-bottom: 1px solid rgba(16,185,129,0.15);
+    text-align: center;
+  }
+  .cta-inner { max-width: 680px; margin: 0 auto; }
+  .cta-inner h2 { font-size: clamp(1.75rem, 4vw, 2.4rem); font-weight: 800; margin-bottom: 1rem; color: var(--es-text-primary, #111827); }
+  .cta-inner p { font-size: 1.1rem; color: var(--es-text-secondary, #4b5563); margin-bottom: 2rem; }
+  .cta-actions { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+  .cta-primary { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.85rem 2rem; background: var(--sl-color-accent, #10b981); color: #fff; border-radius: 0.5rem; font-weight: 700; font-size: 1rem; text-decoration: none; transition: filter 0.2s, transform 0.2s; }
+  .cta-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .cta-secondary { display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.85rem 2rem; background: transparent; color: var(--es-text-secondary, #4b5563); border: 1px solid var(--es-border, #e5e7eb); border-radius: 0.5rem; font-weight: 600; font-size: 1rem; text-decoration: none; transition: border-color 0.2s, color 0.2s; }
+  .cta-secondary:hover { border-color: var(--sl-color-accent, #10b981); color: var(--sl-color-accent, #10b981); }
+</style>

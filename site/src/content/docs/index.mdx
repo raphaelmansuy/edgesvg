@@ -1,0 +1,270 @@
+---
+title: EdgeSVG — Production Raster-to-SVG Vectorization. Scored. Open Source.
+description: EdgeSVG converts PNG, JPG, and WebP into production-quality SVGs — scored with SSIM, edge similarity, IoU, and topology. Python, Node.js, CLI, Rust, and WebAssembly. Zero ML. Zero dependencies.
+template: splash
+hero: {}
+---
+
+import FeatureGrid from '../../components/landing/FeatureGrid.astro';
+import QuickStart from '../../components/landing/QuickStart.astro';
+import BenchmarkSection from '../../components/landing/BenchmarkSection.astro';
+import ShowcaseSection from '../../components/landing/ShowcaseSection.astro';
+import CtaSection from '../../components/landing/CtaSection.astro';
+
+<QuickStart
+  title="One Command. Vectorize Anything."
+  subtitle="pip install edgesvg — and your pipeline can convert any raster image to a production-quality SVG in milliseconds. No ML warmup, no GPU, no model downloads."
+  tabs={[
+    {
+      label: 'Python',
+      lang: 'python',
+      code: `import edgesvg
+
+# Vectorize with auto mode — EdgeSVG picks the best strategy
+result = edgesvg.vectorize("logo.png", method="auto")
+
+# Inspect quality metrics
+print(f"SSIM: {result['report']['metrics']['ssim']:.4f}")
+print(f"Edge F1: {result['report']['metrics']['edge_f1']:.4f}")
+print(f"Path count: {result['report']['metrics']['path_count']}")
+
+# Save SVG
+with open("logo.svg", "w") as f:
+    f.write(result["svg"])
+
+# Analyze the image before converting
+info = edgesvg.inspect("logo.png")
+print(info["recommendation"])
+
+# Compare an existing SVG against the source
+metrics = edgesvg.compare("logo.png", result["svg"])
+print(f"Fidelity: {metrics['fidelity_score']:.4f}")`
+    },
+    {
+      label: 'Node.js',
+      lang: 'javascript',
+      code: `import { vectorize, analyze, compare } from 'edgesvg';
+import { writeFileSync } from 'fs';
+
+// Vectorize with auto mode
+const result = vectorize('logo.png', { method: 'auto' });
+
+console.log('SSIM:', result.report.metrics.ssim.toFixed(4));
+console.log('Edge F1:', result.report.metrics.edge_f1.toFixed(4));
+console.log('Paths:', result.report.metrics.path_count);
+
+// Save SVG
+writeFileSync('logo.svg', result.svg);
+
+// Analyze the image
+const analysis = analyze('logo.png');
+console.log('Image type:', analysis.analysis.kind);
+
+// Compare SVG quality
+const metrics = compare('logo.png', result.svg);
+console.log('Fidelity:', metrics.fidelity_score.toFixed(4));`
+    },
+    {
+      label: 'CLI',
+      lang: 'bash',
+      code: `# Install from source
+cargo install --path .
+
+# Auto mode — EdgeSVG chooses the best strategy
+edgesvg convert logo.png logo.svg --method auto --json
+
+# Premium high-fidelity conversion
+edgesvg premium illustration.png illustration.svg --target 0.98 --json
+
+# Inspect an image before converting
+edgesvg info logo.png --json
+
+# Compare SVG quality against source
+edgesvg compare logo.png logo.svg --json
+
+# Batch benchmark a directory of raster images
+edgesvg benchmark \\
+  --input-dir images/ \\
+  --output-dir results/ \\
+  --json-path results/report.json \\
+  --markdown-path results/report.md`
+    },
+    {
+      label: 'Rust',
+      lang: 'rust',
+      code: `use std::path::Path;
+use edgesvg::{vectorize_path, VectorizeMethod, VectorizeRequest};
+
+let result = vectorize_path(
+    Path::new("logo.png"),
+    &VectorizeRequest {
+        method: VectorizeMethod::Auto,
+        target_ssim: 0.998,
+        ..VectorizeRequest::default()
+    },
+)?;
+
+println!("SSIM: {:.4}", result.report.metrics.ssim);
+println!("Edge F1: {:.4}", result.report.metrics.edge_f1);
+println!("Method used: {:?}", result.effective_method);
+println!("Decision: {}", result.decision);
+
+// Write SVG to file
+std::fs::write("logo.svg", &result.svg)?;`
+    },
+    {
+      label: 'WebAssembly',
+      lang: 'typescript',
+      code: `import init, { vectorize, analyze, compare } from './pkg/edgesvg_wasm.js';
+
+// Load WASM binary once
+await init();
+
+// Get file bytes from user upload
+const file = document.querySelector('input[type=file]').files[0];
+const bytes = new Uint8Array(await file.arrayBuffer());
+
+// Vectorize — runs entirely in the browser
+const result = vectorize(bytes, { method: 'auto' });
+console.log('SVG length:', result.svg.length);
+console.log('SSIM:', result.report.metrics.ssim.toFixed(4));
+
+// Display result
+const img = document.querySelector('#output');
+img.src = 'data:image/svg+xml,' + encodeURIComponent(result.svg);
+
+// Try it: /guides/demo/`
+    }
+  ]}
+/>
+
+<FeatureGrid
+  title="Every SVG Output Is Scored. Not Just Generated."
+  subtitle="EdgeSVG is the only open-source vectorizer that measures what it produces — so you can set quality gates, run regression tests, and compare methods objectively."
+  features={[
+    {
+      icon: 'chart',
+      title: '15+ Quality Metrics',
+      description: 'SSIM, perceptual SSIM, edge similarity, edge F1, foreground IoU, color similarity, topology score, PSNR, MAE, delta-E, file size, and path counts — every run scored automatically.'
+    },
+    {
+      icon: 'target',
+      title: 'Smart Auto Mode',
+      description: 'Analyzes the image before tracing — classifies as logo, icon, illustration, or photo — then picks the best preprocessing and tracing strategy automatically.'
+    },
+    {
+      icon: 'refresh',
+      title: 'Iterative Smart Search',
+      description: 'The `smart` mode runs an iterative quality search, trying multiple strategies until it hits your SSIM and file-size targets or exhausts the budget.'
+    },
+    {
+      icon: 'layers',
+      title: 'Multiple Tracing Modes',
+      description: 'convert, logo, premium, auto, smart, optimal — each tuned for different image types and quality requirements. One binary, multiple strategies.'
+    },
+    {
+      icon: 'globe',
+      title: 'WebAssembly: Browser Native',
+      description: 'Full Rust engine compiled to WASM. Vectorize images in the browser with no server, no uploads. Privacy by design — image data never leaves the device.'
+    },
+    {
+      icon: 'box',
+      title: '5 SDK Languages',
+      description: 'Native bindings for Python (PyO3), Node.js (NAPI-RS), Rust, CLI binary, and WebAssembly. Pre-built packages — no compilation needed for Python and Node.js.'
+    },
+    {
+      icon: 'tool',
+      title: '11 CLI Commands',
+      description: 'convert, logo, premium, auto, smart, info, analyze, compare, render, optimize, benchmark. Complete pipeline from analysis to batch processing.'
+    },
+    {
+      icon: 'shield',
+      title: 'Zero ML Dependencies',
+      description: 'No GPU, no ONNX, no Python ML runtime. Pure Rust — deterministic, fast, and deployable anywhere: Lambda, containers, edge functions, browsers.'
+    },
+    {
+      icon: 'image',
+      title: 'Stable SDK Contract',
+      description: 'All SDKs return the same VectorizeResponse with svg, report, requested_method, effective_method, fallback_from, and decision — consistent across all runtimes.'
+    }
+  ]}
+/>
+
+<BenchmarkSection
+  title="Measure Vectorization Quality — Objectively"
+  subtitle="EdgeSVG computes a full quality report on every output so you don't have to guess. Set SSIM thresholds in CI, compare tracing strategies, and detect regressions automatically."
+  metrics={[
+    { label: 'ssim', description: 'Structural Similarity Index — perceptual quality vs. source raster' },
+    { label: 'ssim_perceptual', description: 'SSIM computed on perceptually uniform color space' },
+    { label: 'edge_similarity', description: 'How closely SVG edges match detected raster edges' },
+    { label: 'edge_precision', description: 'Precision of edge reconstruction' },
+    { label: 'edge_recall', description: 'Recall of edge reconstruction' },
+    { label: 'edge_f1', description: 'F1 score combining edge precision and recall' },
+    { label: 'foreground_iou', description: 'Intersection over Union for foreground coverage' },
+    { label: 'color_similarity', description: 'Color palette fidelity between SVG and source' },
+    { label: 'fidelity_score', description: 'Composite weighted fidelity score' },
+    { label: 'delta_e', description: 'Perceptual color difference (CIE 2000)' },
+    { label: 'topology_score', description: 'Shape count and structural complexity score' },
+    { label: 'psnr', description: 'Peak Signal-to-Noise Ratio in dB' },
+    { label: 'mae', description: 'Mean Absolute Error between rasterized SVG and source' },
+    { label: 'file_size', description: 'SVG file size in bytes' },
+    { label: 'path_count', description: 'Raw <path> element count in generated SVG' },
+    { label: 'weighted_path_count', description: 'Primitive-aware structural complexity (editability metric)' }
+  ]}
+/>
+
+<ShowcaseSection
+  title="Built for Real Automation Workflows"
+  subtitle="Teams building design pipelines, asset automation, and web applications choose EdgeSVG for its scored output, consistent SDKs, and zero-dependency deployment."
+  items={[
+    {
+      icon: 'logo',
+      title: 'Logo & Icon Vectorization',
+      description: 'Convert brand assets, icons, and UI elements into clean scalable SVGs. The logo mode produces minimal paths with clean curves — optimized for editability.',
+      tags: ['Brand Assets', 'Icons', 'Clean Paths'],
+      href: '/getting-started/quick-start-cli/'
+    },
+    {
+      icon: 'automation',
+      title: 'Build Pipeline Integration',
+      description: 'Run EdgeSVG in CI/CD to automatically vectorize raster assets at build time. JSON output with quality metrics lets you gate on SSIM thresholds.',
+      tags: ['CI/CD', 'GitHub Actions', 'Automation'],
+      href: '/guides/cicd/'
+    },
+    {
+      icon: 'browser',
+      title: 'In-Browser SVG Conversion',
+      description: 'The WebAssembly SDK brings the full Rust engine to the browser. No server required — users upload a PNG and get SVG output with quality scores instantly.',
+      tags: ['WebAssembly', 'Privacy', 'Offline', 'React/Vue'],
+      href: '/guides/demo/'
+    },
+    {
+      icon: 'batch',
+      title: 'Batch Asset Processing',
+      description: 'Vectorize entire directories of raster images with the benchmark command. JSON and Markdown reports show per-image quality scores and aggregated summaries.',
+      tags: ['Batch', 'Reporting', 'JSON Reports'],
+      href: '/guides/batch-conversion/'
+    },
+    {
+      icon: 'design',
+      title: 'Design Export Workflows',
+      description: 'Integrate EdgeSVG into design-to-code pipelines to automatically produce SVG assets from exported PNGs. Scored output means you catch quality regressions early.',
+      tags: ['Design Tools', 'Export', 'Quality Gates']
+    },
+    {
+      icon: 'pipeline',
+      title: 'Multi-language Pipelines',
+      description: 'Mix Python, Node.js, and Rust in the same pipeline — the SDK contract is identical across all runtimes. The same VectorizeRequest produces the same result everywhere.',
+      tags: ['Python', 'Node.js', 'Rust', 'Consistent API']
+    }
+  ]}
+/>
+
+<CtaSection
+  title="Start Converting Raster to SVG in Under a Minute"
+  subtitle="pip install edgesvg and your first scored vectorization runs in seconds. No GPU. No ML models. No infrastructure."
+  primaryHref="/getting-started/quick-start-python/"
+  secondaryHref="https://github.com/raphaelmansuy/edgesvg"
+  primaryLabel="Get Started Free"
+  secondaryLabel="Star on GitHub"
+/>

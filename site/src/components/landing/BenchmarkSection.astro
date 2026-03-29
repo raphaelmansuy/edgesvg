@@ -1,0 +1,86 @@
+---
+interface MetricRow {
+  label: string;
+  description: string;
+}
+interface Props {
+  title: string;
+  subtitle: string;
+  metrics: MetricRow[];
+}
+const { title, subtitle, metrics } = Astro.props;
+---
+<section class="benchmark-section">
+  <div class="bs-inner">
+    <div class="bs-header">
+      <h2>{title}</h2>
+      <p set:html={subtitle}></p>
+    </div>
+    <div class="bs-grid">
+      <div class="bs-main">
+        <h3>Output Quality Metrics</h3>
+        <p class="bs-subtitle">Every vectorization run scores the SVG output against the source raster. Here are the metrics EdgeSVG computes:</p>
+        <div class="bs-metrics">
+          {metrics.map(m => (
+            <div class="bs-metric-row">
+              <code class="bs-metric-name">{m.label}</code>
+              <span class="bs-metric-desc">{m.description}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div class="bs-sidebar">
+        <div class="bs-highlight-card">
+          <div class="bs-hl-title">Why Scoring Matters</div>
+          <p>Most vectorizers are black boxes — they produce output and you hope it looks right. EdgeSVG measures every output so you can set quality gates, run regression tests, and compare methods objectively.</p>
+          <ul>
+            <li><strong>SSIM</strong> — perceptual similarity to source</li>
+            <li><strong>Edge F1</strong> — how well paths trace actual boundaries</li>
+            <li><strong>Topology</strong> — shape count and path structure</li>
+            <li><strong>IoU</strong> — foreground coverage</li>
+          </ul>
+          <a href="/concepts/quality-metrics/" class="bs-cta-link">
+            Read the metrics guide →
+          </a>
+        </div>
+        <div class="bs-cmd-card">
+          <div class="bs-cmd-label">Compare any PNG + SVG</div>
+          <pre class="bs-cmd"><code>edgesvg compare input.png result.svg --json</code></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .benchmark-section { padding: 5rem 2rem; }
+  .bs-inner { max-width: 1100px; margin: 0 auto; }
+  .bs-header { text-align: center; margin-bottom: 3rem; }
+  .bs-header h2 { font-size: clamp(1.75rem, 4vw, 2.4rem); font-weight: 800; margin-bottom: 0.75rem; color: var(--es-text-primary, #111827); }
+  .bs-header p { font-size: 1.05rem; color: var(--es-text-secondary, #4b5563); max-width: 650px; margin: 0 auto; }
+
+  .bs-grid { display: grid; grid-template-columns: 1fr auto; gap: 3rem; align-items: start; }
+  .bs-main h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.5rem; }
+  .bs-subtitle { font-size: 0.9rem; color: var(--es-text-secondary, #6b7280); margin-bottom: 1.25rem; }
+  .bs-metrics { border: 1px solid var(--es-border, #e5e7eb); border-radius: 0.5rem; overflow: hidden; }
+  .bs-metric-row { display: grid; grid-template-columns: 160px 1fr; align-items: center; padding: 0.65rem 1rem; border-bottom: 1px solid var(--es-border, #e5e7eb); font-size: 0.875rem; }
+  .bs-metric-row:last-child { border-bottom: none; }
+  .bs-metric-row:nth-child(odd) { background: var(--es-bg-subtle, #f9fafb); }
+  .bs-metric-name { font-family: var(--sl-font-mono, monospace); font-size: 0.82rem; color: var(--sl-color-accent, #10b981); font-weight: 600; }
+  .bs-metric-desc { color: var(--es-text-secondary, #4b5563); }
+
+  .bs-sidebar { width: 280px; display: flex; flex-direction: column; gap: 1rem; }
+  .bs-highlight-card { background: linear-gradient(135deg, rgba(16,185,129,0.08), rgba(59,130,246,0.08)); border: 1px solid rgba(16,185,129,0.2); border-radius: 0.75rem; padding: 1.5rem; }
+  .bs-hl-title { font-weight: 700; margin-bottom: 0.75rem; font-size: 0.95rem; }
+  .bs-highlight-card p { font-size: 0.875rem; color: var(--es-text-secondary, #4b5563); margin-bottom: 0.75rem; line-height: 1.6; }
+  .bs-highlight-card ul { font-size: 0.85rem; padding-left: 1.1rem; line-height: 1.8; color: var(--es-text-secondary, #4b5563); margin-bottom: 1rem; }
+  .bs-cta-link { font-size: 0.85rem; font-weight: 600; color: var(--sl-color-accent, #10b981); text-decoration: none; }
+  .bs-cta-link:hover { text-decoration: underline; }
+
+  .bs-cmd-card { background: var(--es-code-bg, #1e293b); border-radius: 0.5rem; padding: 1rem; }
+  .bs-cmd-label { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; margin-bottom: 0.5rem; }
+  .bs-cmd { margin: 0; font-family: var(--sl-font-mono, monospace); font-size: 0.8rem; color: #34d399; white-space: pre-wrap; overflow-x: auto; background: none; border: none; padding: 0; }
+  .bs-cmd code { background: none; padding: 0; color: inherit; font-size: inherit; }
+
+  @media (max-width: 900px) { .bs-grid { grid-template-columns: 1fr; } .bs-sidebar { width: 100%; } }
+</style>

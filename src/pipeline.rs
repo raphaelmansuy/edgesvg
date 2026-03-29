@@ -11,7 +11,10 @@ use crate::preprocess::{
     adaptive_trace_settings, build_monochrome_alpha_mask, detect_sparse_monochrome_color,
     preprocess_image, quantize_image, MONOCHROME_MASK_ALPHA_THRESHOLD,
 };
-use crate::svg::optimize_svg;
+use crate::svg::{
+    optimize_svg, wrap_svg_with_gradient_background, wrap_svg_with_gradient_surface,
+    LinearGradientSpec, LinearGradientStop,
+};
 use crate::types::{Complexity, ImageAnalysis, ImageKind, QualityPreset, VectorizationReport};
 use crate::vectorizer::trace_to_svg;
 
@@ -84,9 +87,11 @@ pub fn vectorize_image(
         options.max_iterations.max(1),
     );
     let prepared_metrics = PreparedMetricsInput::from_image(original);
+    let gradient_probe_settings =
+        qualities.first().copied().map(|quality| adaptive_trace_settings(&analysis, quality));
 
     let mut best: Option<(String, VectorizationReport, f64)> = None;
-    for quality in qualities {
+    for (quality_index, quality) in qualities.iter().copied().enumerate() {
         let settings = adaptive_trace_settings(&analysis, quality);
         for candidate in &trace_candidates {
             let svg = trace_image(candidate, &settings)?;
@@ -96,6 +101,32 @@ pub fn vectorize_image(
                 analysis: analysis.clone(),
                 settings: settings.clone(),
                 quality_preset: quality,
+                metrics: metrics.clone(),
+            };
+            let score = candidate_score(&analysis, &metrics, options.max_file_size);
+
+            if best
+                .as_ref()
+                .map(|(_, _, best_score)| score > *best_score)
+                .unwrap_or(true)
+            {
+                best = Some((svg, report, score));
+            }
+        }
+
+        if quality_index == 0 && should_stop_quality_search(&analysis, best.as_ref(), options) {
+            break;
+        }
+    }
+
+    if let Some(settings) = gradient_probe_settings.as_ref() {
+        if let Some(svg) = gradient_overlay_candidate(&source_rgba, &analysis, settings)? {
+            let svg = optimize_svg(&svg, settings.optimizer_precision);
+            let metrics = compute_metrics_against(&prepared_metrics, &svg)?;
+            let report = VectorizationReport {
+                analysis: analysis.clone(),
+                settings: settings.clone(),
+                quality_preset: qualities.first().copied().unwrap_or_default(),
                 metrics: metrics.clone(),
             };
             let score = candidate_score(&analysis, &metrics, options.max_file_size);
@@ -271,27 +302,29 @@ fn photo_gradient_candidate(source: &RgbaImage, analysis: &ImageAnalysis) -> Opt
         return None;
     }
 
-    let target_longest_side = if analysis.unique_colors > 4_000 && analysis.edge_density < 0.025 {
-        448.0
+    let smooth_surface = smooth_gradient_factor(analysis);
+    let target_longest_side = if smooth_surface >= 0.70 {
+        288.0
+    } else if analysis.unique_colors > 4_000 && analysis.edge_density < 0.025 {
+        384.0
     } else {
         320.0
     };
     let scale = target_longest_side / longest_side as f32;
     let width = ((source.width() as f32) * scale).round().max(1.0) as u32;
     let height = ((source.height() as f32) * scale).round().max(1.0) as u32;
-    let resized = image::imageops::resize(source, width, height, FilterType::Lanczos3);
-    let palette_size = if analysis.unique_colors > 4_000 || analysis.color_variance > 90.0 {
+    let resized = image::imageops::resize(source, width, height, FilterType::Triangle);
+    let palette_size = if smooth_surface >= 0.75 {
+        6
+    } else if analysis.unique_colors > 4_000 || analysis.color_variance > 90.0 {
         8
     } else {
-        12
+        10
     };
     let candidate = quantize_image(&resized, palette_size);
-    let candidate = image::DynamicImage::ImageRgba8(candidate)
-        .blur(0.5)
-        .to_rgba8();
     Some(
         image::DynamicImage::ImageRgba8(candidate)
-            .unsharpen(1.0, 1)
+            .blur(0.45 + smooth_surface as f32 * 0.25)
             .to_rgba8(),
     )
 }
@@ -312,29 +345,725 @@ fn smooth_illustration_candidate(
         return None;
     }
 
-    let target_longest_side = if analysis.unique_colors > 12_000 {
-        512.0
-    } else {
+    let smooth_surface = smooth_gradient_factor(analysis);
+    let target_longest_side = if smooth_surface >= 0.75 {
+        320.0
+    } else if smooth_surface >= 0.55 {
+        384.0
+    } else if analysis.unique_colors > 12_000 {
         448.0
+    } else {
+        416.0
     };
     let scale = target_longest_side / longest_side as f32;
     let width = ((source.width() as f32) * scale).round().max(1.0) as u32;
     let height = ((source.height() as f32) * scale).round().max(1.0) as u32;
-    let resized = image::imageops::resize(source, width, height, FilterType::Lanczos3);
-    let palette_size = if analysis.unique_colors > 20_000 {
+    let resized = image::imageops::resize(source, width, height, FilterType::Triangle);
+    let palette_size = if smooth_surface >= 0.75 {
+        8
+    } else if smooth_surface >= 0.55 {
+        12
+    } else if analysis.unique_colors > 20_000 {
         16
     } else {
-        24
+        18
     };
     let candidate = quantize_image(&resized, palette_size);
-    let candidate = image::DynamicImage::ImageRgba8(candidate)
-        .blur(0.35)
-        .to_rgba8();
     Some(
         image::DynamicImage::ImageRgba8(candidate)
-            .unsharpen(0.8, 1)
+            .blur(0.35 + smooth_surface as f32 * 0.25)
             .to_rgba8(),
     )
+}
+
+fn gradient_overlay_candidate(
+    source: &RgbaImage,
+    analysis: &ImageAnalysis,
+    settings: &crate::types::TraceSettings,
+) -> Result<Option<String>> {
+    if !matches!(analysis.image_type, ImageKind::Illustration | ImageKind::Photo)
+        || smooth_gradient_factor(analysis) < 0.55
+        || source.width().min(source.height()) < 192
+    {
+        return Ok(None);
+    }
+
+    let surface = match fit_gradient_surface(source, analysis) {
+        Some(surface) => surface,
+        None => return Ok(None),
+    };
+    let overlay = decompose_foreground_overlay_with_mask(
+        source,
+        &surface.gradient,
+        surface.residual_tolerance,
+        surface.support_mask.as_ref(),
+    );
+    let overlay = simplify_gradient_overlay(&overlay, analysis);
+    let gradient_settings = compact_gradient_trace_settings(settings);
+    let overlay_svg = trace_image(&overlay, &gradient_settings)?;
+    if let Some(mask) = surface.support_mask.as_ref() {
+        let mask_svg = trace_image(mask, &gradient_settings)?;
+        Ok(Some(wrap_svg_with_gradient_surface(
+            source.width(),
+            source.height(),
+            &surface.gradient,
+            &mask_svg,
+            &overlay_svg,
+        )))
+    } else {
+        Ok(Some(wrap_svg_with_gradient_background(
+            source.width(),
+            source.height(),
+            &surface.gradient,
+            &overlay_svg,
+        )))
+    }
+}
+
+#[derive(Debug, Clone)]
+struct GradientSurface {
+    gradient: LinearGradientSpec,
+    residual_tolerance: f64,
+    support_mask: Option<RgbaImage>,
+}
+
+fn fit_gradient_surface(source: &RgbaImage, analysis: &ImageAnalysis) -> Option<GradientSurface> {
+    if analysis.alpha_coverage >= 0.98 {
+        let gradient = fit_linear_gradient_background(source)?;
+        let residual_tolerance = estimate_gradient_residual_tolerance(
+            source,
+            &gradient,
+            &border_sample_mask(source.width(), source.height()),
+        )?;
+        Some(GradientSurface {
+            gradient,
+            residual_tolerance,
+            support_mask: None,
+        })
+    } else {
+        fit_visible_gradient_surface(source)
+    }
+}
+
+fn fit_linear_gradient_background(source: &RgbaImage) -> Option<LinearGradientSpec> {
+    let width = source.width();
+    let height = source.height();
+    if width < 2 || height < 2 {
+        return None;
+    }
+
+    let border_mask = border_sample_mask(source.width(), source.height());
+    let luma_plane = fit_plane(source, &border_mask, |pixel| {
+        0.299 * f64::from(pixel[0]) + 0.587 * f64::from(pixel[1]) + 0.114 * f64::from(pixel[2])
+    })?;
+    let direction = normalize2([luma_plane[0], luma_plane[1]])?;
+
+    let corners = [
+        project_t(0.0, 0.0, direction),
+        project_t(1.0, 0.0, direction),
+        project_t(0.0, 1.0, direction),
+        project_t(1.0, 1.0, direction),
+    ];
+    let t_min = corners.into_iter().fold(f64::INFINITY, f64::min);
+    let t_max = corners.into_iter().fold(f64::NEG_INFINITY, f64::max);
+    if (t_max - t_min).abs() < 1e-6 {
+        return None;
+    }
+
+    let initial = fit_two_stop_gradient(
+        source,
+        &border_mask,
+        direction,
+        t_min,
+        t_max,
+    )?;
+    let initial_tolerance =
+        estimate_gradient_residual_tolerance(source, &initial, &border_mask).unwrap_or(4.0);
+    let initial_overlay = decompose_foreground_overlay(source, &initial, initial_tolerance);
+    let background_pixels = initial_overlay.pixels().filter(|pixel| pixel[3] <= 48).count();
+    let background_coverage = background_pixels as f64 / (width as usize * height as usize).max(1) as f64;
+    if background_coverage < 0.20 {
+        return None;
+    }
+
+    Some(refine_gradient_stops(
+        source,
+        &|x, y| initial_overlay.get_pixel(x, y)[3] <= 48,
+        direction,
+        t_min,
+        t_max,
+        5,
+    ))
+}
+
+fn fit_visible_gradient_surface(source: &RgbaImage) -> Option<GradientSurface> {
+    let visible_mask = |x: u32, y: u32| source.get_pixel(x, y)[3] >= 250;
+    let visible_pixels = source.pixels().filter(|pixel| pixel[3] >= 16).count();
+    let solid_visible_pixels = source.pixels().filter(|pixel| pixel[3] >= 250).count();
+    if solid_visible_pixels < (source.width() as usize * source.height() as usize / 8).max(4_096) {
+        return None;
+    }
+
+    let luma_plane = fit_plane(source, &visible_mask, |pixel| {
+        0.299 * f64::from(pixel[0]) + 0.587 * f64::from(pixel[1]) + 0.114 * f64::from(pixel[2])
+    })?;
+    let direction = normalize2([luma_plane[0], luma_plane[1]])?;
+    let corners = [
+        project_t(0.0, 0.0, direction),
+        project_t(1.0, 0.0, direction),
+        project_t(0.0, 1.0, direction),
+        project_t(1.0, 1.0, direction),
+    ];
+    let t_min = corners.into_iter().fold(f64::INFINITY, f64::min);
+    let t_max = corners.into_iter().fold(f64::NEG_INFINITY, f64::max);
+    if (t_max - t_min).abs() < 1e-6 {
+        return None;
+    }
+
+    let initial = fit_two_stop_gradient(source, &visible_mask, direction, t_min, t_max)?;
+    let support_threshold = (estimate_gradient_residual_percentile(source, &initial, &visible_mask, 0.35)?
+        + 3.0)
+        .clamp(4.0, 18.0);
+    let support_mask = build_gradient_support_mask(source, &initial, support_threshold);
+    let support_pixels = support_mask.pixels().filter(|pixel| pixel[3] >= 16).count();
+    let support_ratio = support_pixels as f64 / visible_pixels.max(1) as f64;
+    if !(0.08..=0.85).contains(&support_ratio) {
+        return None;
+    }
+
+    let support_mask_fn = |x: u32, y: u32| support_mask.get_pixel(x, y)[3] >= 128;
+    let refined = refine_gradient_stops(source, &support_mask_fn, direction, t_min, t_max, 5);
+    let refined_tolerance =
+        estimate_gradient_residual_tolerance(source, &refined, &support_mask_fn).unwrap_or(4.0);
+    Some(GradientSurface {
+        gradient: refined,
+        residual_tolerance: refined_tolerance,
+        support_mask: Some(support_mask),
+    })
+}
+
+fn fit_two_stop_gradient<F>(
+    source: &RgbaImage,
+    sample_mask: &F,
+    direction: [f64; 2],
+    t_min: f64,
+    t_max: f64,
+) -> Option<LinearGradientSpec>
+where
+    F: Fn(u32, u32) -> bool,
+{
+    let mut channels = [[0.0; 2]; 3];
+    for channel in 0..3 {
+        let (slope, intercept) = fit_channel_on_axis(source, sample_mask, direction, channel)?;
+        channels[channel] = [slope, intercept];
+    }
+
+    let start = sample_gradient_channels(&channels, t_min);
+    let end = sample_gradient_channels(&channels, t_max);
+    Some(build_gradient_spec(source.width(), source.height(), direction, t_min, t_max, &[
+        (0.0, start),
+        (1.0, end),
+    ]))
+}
+
+fn refine_gradient_stops<F>(
+    source: &RgbaImage,
+    sample_mask: &F,
+    direction: [f64; 2],
+    t_min: f64,
+    t_max: f64,
+    stop_count: usize,
+) -> LinearGradientSpec
+where
+    F: Fn(u32, u32) -> bool,
+{
+    let mut sums = vec![[0.0; 3]; stop_count];
+    let mut counts = vec![0usize; stop_count];
+
+    for y in 0..source.height() {
+        for x in 0..source.width() {
+            if !sample_mask(x, y) {
+                continue;
+            }
+            let nx = normalized_coord(x, source.width());
+            let ny = normalized_coord(y, source.height());
+            let t = ((project_t(nx, ny, direction) - t_min) / (t_max - t_min)).clamp(0.0, 1.0);
+            let bucket = ((t * (stop_count.saturating_sub(1)) as f64).round() as usize)
+                .min(stop_count.saturating_sub(1));
+            let pixel = source.get_pixel(x, y);
+            for channel in 0..3 {
+                sums[bucket][channel] += f64::from(pixel[channel]);
+            }
+            counts[bucket] += 1;
+        }
+    }
+
+    let mut stops: Vec<(f64, [u8; 3])> = Vec::with_capacity(stop_count);
+    for index in 0..stop_count {
+        let offset = if stop_count <= 1 {
+            0.0
+        } else {
+            index as f64 / (stop_count - 1) as f64
+        };
+        let color = if counts[index] > 0 {
+            [
+                (sums[index][0] / counts[index] as f64).round().clamp(0.0, 255.0) as u8,
+                (sums[index][1] / counts[index] as f64).round().clamp(0.0, 255.0) as u8,
+                (sums[index][2] / counts[index] as f64).round().clamp(0.0, 255.0) as u8,
+            ]
+        } else if let Some(previous) = stops.last() {
+            previous.1
+        } else {
+            let pixel = source.get_pixel(0, 0);
+            [pixel[0], pixel[1], pixel[2]]
+        };
+        stops.push((offset, color));
+    }
+
+    build_gradient_spec(source.width(), source.height(), direction, t_min, t_max, &stops)
+}
+
+fn build_gradient_spec(
+    width: u32,
+    height: u32,
+    direction: [f64; 2],
+    t_min: f64,
+    t_max: f64,
+    stops: &[(f64, [u8; 3])],
+) -> LinearGradientSpec {
+    let x1 = direction[0] * t_min * width as f64;
+    let y1 = direction[1] * t_min * height as f64;
+    let x2 = direction[0] * t_max * width as f64;
+    let y2 = direction[1] * t_max * height as f64;
+
+    LinearGradientSpec {
+        x1,
+        y1,
+        x2,
+        y2,
+        stops: stops
+            .iter()
+            .map(|(offset, color)| LinearGradientStop {
+                offset: *offset,
+                color: *color,
+            })
+            .collect(),
+    }
+}
+
+fn decompose_foreground_overlay(
+    source: &RgbaImage,
+    gradient: &LinearGradientSpec,
+    residual_tolerance: f64,
+) -> RgbaImage {
+    decompose_foreground_overlay_with_mask(source, gradient, residual_tolerance, None)
+}
+
+fn decompose_foreground_overlay_with_mask(
+    source: &RgbaImage,
+    gradient: &LinearGradientSpec,
+    residual_tolerance: f64,
+    support_mask: Option<&RgbaImage>,
+) -> RgbaImage {
+    let mut overlay = RgbaImage::new(source.width(), source.height());
+    for y in 0..source.height() {
+        for x in 0..source.width() {
+            let actual = source.get_pixel(x, y);
+            if actual[3] < 16 {
+                overlay.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+                continue;
+            }
+            if let Some(mask) = support_mask {
+                if mask.get_pixel(x, y)[3] < 16 {
+                    overlay.put_pixel(x, y, *actual);
+                    continue;
+                }
+            }
+            let background = sample_gradient_color(gradient, x as f64, y as f64);
+            if max_channel_residual([actual[0], actual[1], actual[2]], background) <= residual_tolerance {
+                overlay.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+                continue;
+            }
+            let alpha = minimal_unblend_alpha(
+                [actual[0], actual[1], actual[2]],
+                background,
+                residual_tolerance,
+            );
+            if alpha <= 0.02 {
+                overlay.put_pixel(x, y, Rgba([0, 0, 0, 0]));
+                continue;
+            }
+            let foreground = unblend_pixel([actual[0], actual[1], actual[2]], background, alpha);
+            overlay.put_pixel(
+                x,
+                y,
+                Rgba([
+                    foreground[0],
+                    foreground[1],
+                    foreground[2],
+                    (alpha * 255.0).round().clamp(0.0, 255.0) as u8,
+                ]),
+            );
+        }
+    }
+    overlay
+}
+
+fn build_gradient_support_mask(
+    source: &RgbaImage,
+    gradient: &LinearGradientSpec,
+    residual_threshold: f64,
+) -> RgbaImage {
+    let mut mask = RgbaImage::new(source.width(), source.height());
+    for y in 0..source.height() {
+        for x in 0..source.width() {
+            let pixel = source.get_pixel(x, y);
+            let keep = pixel[3] >= 16
+                && max_channel_residual(
+                    [pixel[0], pixel[1], pixel[2]],
+                    sample_gradient_color(gradient, x as f64, y as f64),
+                ) <= residual_threshold;
+            mask.put_pixel(
+                x,
+                y,
+                if keep {
+                    Rgba([0, 0, 0, pixel[3]])
+                } else {
+                    Rgba([0, 0, 0, 0])
+                },
+            );
+        }
+    }
+
+    let softened = image::DynamicImage::ImageRgba8(mask).blur(1.1).to_rgba8();
+    let mut refined = RgbaImage::new(source.width(), source.height());
+    for y in 0..source.height() {
+        for x in 0..source.width() {
+            let source_pixel = source.get_pixel(x, y);
+            let alpha = if source_pixel[3] >= 16 && softened.get_pixel(x, y)[3] >= 96 {
+                source_pixel[3]
+            } else {
+                0
+            };
+            refined.put_pixel(x, y, Rgba([0, 0, 0, alpha]));
+        }
+    }
+    refined
+}
+
+fn simplify_gradient_overlay(overlay: &RgbaImage, analysis: &ImageAnalysis) -> RgbaImage {
+    let mut cleaned = overlay.clone();
+    for pixel in cleaned.pixels_mut() {
+        if pixel[3] < 24 {
+            *pixel = Rgba([0, 0, 0, 0]);
+        }
+    }
+
+    let palette_size = match analysis.image_type {
+        ImageKind::Illustration => 12,
+        ImageKind::Photo => 16,
+        _ => 16,
+    };
+    quantize_image(&cleaned, palette_size)
+}
+
+fn compact_gradient_trace_settings(
+    settings: &crate::types::TraceSettings,
+) -> crate::types::TraceSettings {
+    let mut compact = settings.clone();
+    compact.mode = crate::types::TraceMode::Polygon;
+    compact.filter_speckle = compact.filter_speckle.max(3);
+    compact.color_precision = compact.color_precision.min(5);
+    compact.layer_difference = compact.layer_difference.max(20);
+    compact.length_threshold += 1.0;
+    compact.corner_threshold = compact.corner_threshold.min(35);
+    compact.max_iterations = compact.max_iterations.min(12);
+    compact.path_precision = compact.path_precision.min(4);
+    compact.optimizer_precision = compact.optimizer_precision.min(1);
+    compact
+}
+
+fn estimate_gradient_residual_tolerance<F>(
+    source: &RgbaImage,
+    gradient: &LinearGradientSpec,
+    sample_mask: &F,
+) -> Option<f64>
+where
+    F: Fn(u32, u32) -> bool,
+{
+    let residuals = collect_gradient_residuals(source, gradient, sample_mask);
+    if residuals.len() < 64 {
+        return None;
+    }
+    let index = ((residuals.len() as f64 - 1.0) * 0.90).round() as usize;
+    Some((residuals[index] + 2.0).clamp(3.0, 24.0))
+}
+
+fn estimate_gradient_residual_percentile<F>(
+    source: &RgbaImage,
+    gradient: &LinearGradientSpec,
+    sample_mask: &F,
+    percentile: f64,
+) -> Option<f64>
+where
+    F: Fn(u32, u32) -> bool,
+{
+    let residuals = collect_gradient_residuals(source, gradient, sample_mask);
+    if residuals.len() < 64 {
+        return None;
+    }
+    let index = ((residuals.len() as f64 - 1.0) * percentile.clamp(0.0, 1.0)).round() as usize;
+    residuals.get(index).copied()
+}
+
+fn collect_gradient_residuals<F>(
+    source: &RgbaImage,
+    gradient: &LinearGradientSpec,
+    sample_mask: &F,
+) -> Vec<f64>
+where
+    F: Fn(u32, u32) -> bool,
+{
+    let mut residuals = Vec::new();
+    for y in 0..source.height() {
+        for x in 0..source.width() {
+            let pixel = source.get_pixel(x, y);
+            if pixel[3] < 250 || !sample_mask(x, y) {
+                continue;
+            }
+            let background = sample_gradient_color(gradient, x as f64, y as f64);
+            residuals.push(max_channel_residual([pixel[0], pixel[1], pixel[2]], background));
+        }
+    }
+    residuals.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    residuals
+}
+
+fn sample_gradient_color(gradient: &LinearGradientSpec, px: f64, py: f64) -> [u8; 3] {
+    let dx = gradient.x2 - gradient.x1;
+    let dy = gradient.y2 - gradient.y1;
+    let denom = dx * dx + dy * dy;
+    let t = if denom <= 1e-6 {
+        0.0
+    } else {
+        (((px - gradient.x1) * dx + (py - gradient.y1) * dy) / denom).clamp(0.0, 1.0)
+    };
+
+    for window in gradient.stops.windows(2) {
+        let left = &window[0];
+        let right = &window[1];
+        if t <= right.offset {
+            let local = ((t - left.offset) / (right.offset - left.offset).max(1e-6)).clamp(0.0, 1.0);
+            return [
+                lerp_u8(left.color[0], right.color[0], local),
+                lerp_u8(left.color[1], right.color[1], local),
+                lerp_u8(left.color[2], right.color[2], local),
+            ];
+        }
+    }
+
+    gradient
+        .stops
+        .last()
+        .map(|stop| stop.color)
+        .unwrap_or([255, 255, 255])
+}
+
+fn fit_channel_on_axis<F>(
+    source: &RgbaImage,
+    sample_mask: &F,
+    direction: [f64; 2],
+    channel: usize,
+) -> Option<(f64, f64)>
+where
+    F: Fn(u32, u32) -> bool,
+{
+    let mut n = 0.0;
+    let mut sum_t = 0.0;
+    let mut sum_tt = 0.0;
+    let mut sum_v = 0.0;
+    let mut sum_tv = 0.0;
+
+    for y in 0..source.height() {
+        for x in 0..source.width() {
+            let pixel = source.get_pixel(x, y);
+            if pixel[3] < 250 || !sample_mask(x, y) {
+                continue;
+            }
+            let t = project_t(
+                normalized_coord(x, source.width()),
+                normalized_coord(y, source.height()),
+                direction,
+            );
+            let value = f64::from(pixel[channel]);
+            n += 1.0;
+            sum_t += t;
+            sum_tt += t * t;
+            sum_v += value;
+            sum_tv += t * value;
+        }
+    }
+
+    let denom = n * sum_tt - sum_t * sum_t;
+    if n <= 0.0 || denom.abs() < 1e-9 {
+        return None;
+    }
+    let slope = (n * sum_tv - sum_t * sum_v) / denom;
+    let intercept = (sum_v - slope * sum_t) / n;
+    Some((slope, intercept))
+}
+
+fn fit_plane<F>(
+    source: &RgbaImage,
+    sample_mask: &F,
+    value_of: impl Fn(&Rgba<u8>) -> f64,
+) -> Option<[f64; 3]>
+where
+    F: Fn(u32, u32) -> bool,
+{
+    let mut matrix = [[0.0; 3]; 3];
+    let mut rhs = [0.0; 3];
+
+    for y in 0..source.height() {
+        for x in 0..source.width() {
+            let pixel = source.get_pixel(x, y);
+            if pixel[3] < 250 || !sample_mask(x, y) {
+                continue;
+            }
+            let row = [
+                normalized_coord(x, source.width()),
+                normalized_coord(y, source.height()),
+                1.0,
+            ];
+            let value = value_of(pixel);
+            for i in 0..3 {
+                rhs[i] += row[i] * value;
+                for j in 0..3 {
+                    matrix[i][j] += row[i] * row[j];
+                }
+            }
+        }
+    }
+
+    solve_3x3(matrix, rhs)
+}
+
+fn border_sample_mask(width: u32, height: u32) -> impl Fn(u32, u32) -> bool {
+    let margin = (width.min(height) / 10).max(8);
+    move |x, y| {
+        x < margin
+            || y < margin
+            || x >= width.saturating_sub(margin)
+            || y >= height.saturating_sub(margin)
+    }
+}
+
+fn solve_3x3(mut matrix: [[f64; 3]; 3], mut rhs: [f64; 3]) -> Option<[f64; 3]> {
+    for pivot in 0..3 {
+        let mut best = pivot;
+        for row in pivot + 1..3 {
+            if matrix[row][pivot].abs() > matrix[best][pivot].abs() {
+                best = row;
+            }
+        }
+        if matrix[best][pivot].abs() < 1e-9 {
+            return None;
+        }
+        if best != pivot {
+            matrix.swap(best, pivot);
+            rhs.swap(best, pivot);
+        }
+        let scale = matrix[pivot][pivot];
+        for col in pivot..3 {
+            matrix[pivot][col] /= scale;
+        }
+        rhs[pivot] /= scale;
+        for row in 0..3 {
+            if row == pivot {
+                continue;
+            }
+            let factor = matrix[row][pivot];
+            for col in pivot..3 {
+                matrix[row][col] -= factor * matrix[pivot][col];
+            }
+            rhs[row] -= factor * rhs[pivot];
+        }
+    }
+    Some(rhs)
+}
+
+fn normalize2(vector: [f64; 2]) -> Option<[f64; 2]> {
+    let length = (vector[0] * vector[0] + vector[1] * vector[1]).sqrt();
+    if length <= 1e-6 {
+        None
+    } else {
+        Some([vector[0] / length, vector[1] / length])
+    }
+}
+
+fn normalized_coord(index: u32, len: u32) -> f64 {
+    if len <= 1 {
+        0.0
+    } else {
+        index as f64 / (len - 1) as f64
+    }
+}
+
+fn project_t(x: f64, y: f64, direction: [f64; 2]) -> f64 {
+    x * direction[0] + y * direction[1]
+}
+
+fn sample_gradient_channels(channels: &[[f64; 2]; 3], t: f64) -> [u8; 3] {
+    [
+        (channels[0][0] * t + channels[0][1]).round().clamp(0.0, 255.0) as u8,
+        (channels[1][0] * t + channels[1][1]).round().clamp(0.0, 255.0) as u8,
+        (channels[2][0] * t + channels[2][1]).round().clamp(0.0, 255.0) as u8,
+    ]
+}
+
+fn minimal_unblend_alpha(actual: [u8; 3], background: [u8; 3], residual_tolerance: f64) -> f64 {
+    let mut alpha: f64 = 0.0;
+    for channel in 0..3 {
+        let actual = f64::from(actual[channel]);
+        let background = f64::from(background[channel]);
+        let distance = (actual - background).abs();
+        if distance <= residual_tolerance {
+            continue;
+        }
+        let effective_distance = distance - residual_tolerance;
+        let required = if actual >= background {
+            effective_distance / (255.0 - background).max(1.0)
+        } else {
+            effective_distance / background.max(1.0)
+        };
+        alpha = alpha.max(required);
+    }
+    alpha.clamp(0.0, 1.0)
+}
+
+fn unblend_pixel(actual: [u8; 3], background: [u8; 3], alpha: f64) -> [u8; 3] {
+    if alpha <= 1e-6 {
+        return [0, 0, 0];
+    }
+    let inv = 1.0 - alpha;
+    let channel = |index: usize| {
+        ((f64::from(actual[index]) - f64::from(background[index]) * inv) / alpha)
+            .round()
+            .clamp(0.0, 255.0) as u8
+    };
+    [channel(0), channel(1), channel(2)]
+}
+
+fn lerp_u8(left: u8, right: u8, t: f64) -> u8 {
+    (f64::from(left) + (f64::from(right) - f64::from(left)) * t)
+        .round()
+        .clamp(0.0, 255.0) as u8
+}
+
+fn max_channel_residual(actual: [u8; 3], background: [u8; 3]) -> f64 {
+    (0..3)
+        .map(|channel| (f64::from(actual[channel]) - f64::from(background[channel])).abs())
+        .fold(0.0, f64::max)
 }
 
 fn quality_search_order(
@@ -452,19 +1181,27 @@ fn candidate_score(
         0.0
     };
     let size_penalty = excess_penalty(metrics.file_size as f64, target_size) * size_penalty_weight;
-    let path_penalty =
-        excess_penalty(metrics.path_count as f64, target_paths) * path_penalty_weight;
+    let path_penalty = excess_penalty(metrics.weighted_path_count, target_paths) * path_penalty_weight;
     let fidelity_penalty = (fidelity_floor - metrics.fidelity_score).max(0.0) * 0.45;
     let local_ssim_penalty = (local_ssim_floor(analysis) - metrics.local_ssim_p10).max(0.0) * 0.30;
     let edge_penalty = (edge_floor - metrics.edge_f1).max(0.0) * edge_penalty_weight;
+    let gradient_bonus = if metrics.has_gradients
+        && smooth_gradient >= 0.55
+        && metrics.fidelity_score >= fidelity_floor - 0.015
+    {
+        0.03 * smooth_gradient
+    } else {
+        0.0
+    };
     let complexity_penalty = excess_penalty(metrics.file_size as f64, target_size * 1.4)
         * 0.10
         * (1.0 - smooth_gradient * 0.35)
-        + excess_penalty(metrics.path_count as f64, target_paths * 1.35)
+        + excess_penalty(metrics.weighted_path_count, target_paths * 1.35)
             * 0.12
             * (1.0 - smooth_gradient * 0.35);
 
     candidate_reliability_score(metrics)
+        + gradient_bonus
         - size_penalty
         - path_penalty
         - oversize_penalty
@@ -472,6 +1209,35 @@ fn candidate_score(
         - fidelity_penalty
         - local_ssim_penalty
         - edge_penalty
+}
+
+fn should_stop_quality_search(
+    analysis: &ImageAnalysis,
+    best: Option<&(String, VectorizationReport, f64)>,
+    options: &VectorizeOptions,
+) -> bool {
+    let Some((_, report, _)) = best else {
+        return false;
+    };
+    let metrics = &report.metrics;
+    let smooth_gradient = smooth_gradient_factor(analysis);
+    if smooth_gradient >= 0.55 {
+        return false;
+    }
+
+    let (target_size, target_paths) = complexity_budget(analysis, smooth_gradient);
+    let relaxed_target_ssim = (options.target_ssim - 0.002).clamp(0.0, 1.0);
+    let tight_size_limit = (options.max_file_size as f64 * 0.92).min(target_size * 1.05);
+    let tight_path_limit = target_paths * 1.08;
+
+    (matches!(analysis.image_type, ImageKind::Logo | ImageKind::Icon)
+        || analysis.is_sparse_diagram_like())
+        && metrics.ssim >= relaxed_target_ssim
+        && metrics.fidelity_score >= fidelity_floor(analysis) + 0.01
+        && metrics.local_ssim_p10 >= local_ssim_floor(analysis)
+        && metrics.edge_f1 >= edge_floor(analysis)
+        && (metrics.file_size as f64) <= tight_size_limit
+        && metrics.weighted_path_count <= tight_path_limit
 }
 
 fn candidate_reliability_score(metrics: &crate::metrics::QualityMetrics) -> f64 {
@@ -639,10 +1405,12 @@ mod tests {
     use tempfile::tempdir;
 
     use crate::metrics::QualityMetrics;
-    use crate::types::{Complexity, ImageAnalysis, ImageKind};
+    use crate::preprocess::adaptive_trace_settings;
+    use crate::types::{Complexity, ImageAnalysis, ImageKind, VectorizationReport};
 
     use super::{
-        quality_search_order, trace_candidate_image, vectorize, QualityPreset, VectorizeOptions,
+        gradient_overlay_candidate, quality_search_order, trace_candidate_image, vectorize,
+        QualityPreset, VectorizeOptions,
     };
 
     #[test]
@@ -870,6 +1638,9 @@ mod tests {
             mae: 20.0,
             file_size: 2_000,
             path_count: 8,
+            primitive_count: 0,
+            weighted_path_count: 8.0,
+            has_gradients: false,
         };
         let bloated = QualityMetrics {
             ssim: 0.91,
@@ -890,6 +1661,9 @@ mod tests {
             mae: 15.0,
             file_size: 10_000,
             path_count: 120,
+            primitive_count: 0,
+            weighted_path_count: 120.0,
+            has_gradients: false,
         };
 
         assert!(
@@ -933,6 +1707,9 @@ mod tests {
             mae: 3.27,
             file_size: 132_618,
             path_count: 85,
+            primitive_count: 0,
+            weighted_path_count: 85.0,
+            has_gradients: false,
         };
         let richer = QualityMetrics {
             ssim: 0.9954,
@@ -953,6 +1730,9 @@ mod tests {
             mae: 3.04,
             file_size: 183_478,
             path_count: 123,
+            primitive_count: 0,
+            weighted_path_count: 123.0,
+            has_gradients: false,
         };
 
         assert!(
@@ -996,6 +1776,9 @@ mod tests {
             mae: 9.0,
             file_size: 7_200,
             path_count: 16,
+            primitive_count: 0,
+            weighted_path_count: 16.0,
+            has_gradients: false,
         };
         let collapsed = QualityMetrics {
             ssim: 0.90,
@@ -1016,6 +1799,9 @@ mod tests {
             mae: 18.0,
             file_size: 1_800,
             path_count: 2,
+            primitive_count: 0,
+            weighted_path_count: 2.0,
+            has_gradients: false,
         };
 
         assert!(
@@ -1057,6 +1843,165 @@ mod tests {
 
         let candidate = trace_candidate_image(&source, &flattened, &analysis).unwrap();
         assert!(candidate.pixels().all(|pixel| pixel[3] == 255));
+    }
+
+    #[test]
+    fn gradient_overlay_candidate_emits_surface_gradient_for_transparent_subject() {
+        let width = 256;
+        let height = 256;
+        let mut image = RgbaImage::new(width, height);
+        for y in 32..224 {
+            for x in 24..232 {
+                let t = (x - 24) as f64 / 208.0;
+                let value = (90.0 + t * 90.0).round() as u8;
+                image.put_pixel(x, y, Rgba([value, value, value, 255]));
+            }
+        }
+        for y in 96..152 {
+            for x in 112..180 {
+                image.put_pixel(x, y, Rgba([35, 35, 35, 255]));
+            }
+        }
+
+        let analysis = ImageAnalysis {
+            width,
+            height,
+            unique_colors: 6_000,
+            effective_colors: 96,
+            top_10_coverage: 0.28,
+            top_50_coverage: 0.60,
+            color_variance: 56.0,
+            edge_density: 0.012,
+            alpha_coverage: 0.63,
+            dominant_colors: vec!["#808080".to_string()],
+            image_type: ImageKind::Illustration,
+            complexity: Complexity::Medium,
+        };
+        let settings = adaptive_trace_settings(&analysis, QualityPreset::Balanced);
+
+        let svg = gradient_overlay_candidate(&image, &analysis, &settings)
+            .unwrap()
+            .expect("gradient surface candidate");
+
+        assert!(svg.contains("<linearGradient"));
+        assert!(svg.contains("surfaceGradient"));
+        assert!(!svg.contains(r#"<rect width="256" height="256" fill="url(#bgGradient)"/>"#));
+    }
+
+    #[test]
+    fn quality_search_can_stop_early_for_high_quality_icon_result() {
+        let analysis = ImageAnalysis {
+            width: 128,
+            height: 128,
+            unique_colors: 24,
+            effective_colors: 8,
+            top_10_coverage: 0.96,
+            top_50_coverage: 1.0,
+            color_variance: 34.0,
+            edge_density: 0.03,
+            alpha_coverage: 1.0,
+            dominant_colors: vec!["#000000".to_string()],
+            image_type: ImageKind::Icon,
+            complexity: Complexity::Medium,
+        };
+        let metrics = QualityMetrics {
+            ssim: 0.997,
+            ssim_perceptual: 0.998,
+            local_ssim_p10: 0.93,
+            local_ssim_min: 0.90,
+            gradient_similarity: 0.95,
+            edge_similarity: 0.95,
+            edge_precision: 0.96,
+            edge_recall: 0.95,
+            edge_f1: 0.95,
+            foreground_iou: 0.97,
+            color_similarity: 0.96,
+            fidelity_score: 0.95,
+            delta_e: 1.5,
+            topology_score: 1.0,
+            psnr: 34.0,
+            mae: 1.0,
+            file_size: 2_200,
+            path_count: 6,
+            primitive_count: 2,
+            weighted_path_count: 6.7,
+            has_gradients: false,
+        };
+        let report = VectorizationReport {
+            analysis: analysis.clone(),
+            settings: adaptive_trace_settings(&analysis, QualityPreset::Figma),
+            quality_preset: QualityPreset::Figma,
+            metrics,
+        };
+
+        assert!(super::should_stop_quality_search(
+            &analysis,
+            Some(&(String::new(), report, 0.95)),
+            &VectorizeOptions {
+                target_ssim: 0.998,
+                max_file_size: 100_000,
+                max_iterations: 2,
+                quality: Some(QualityPreset::Figma),
+            },
+        ));
+    }
+
+    #[test]
+    fn quality_search_keeps_searching_for_smooth_gradient_scene() {
+        let analysis = ImageAnalysis {
+            width: 1024,
+            height: 768,
+            unique_colors: 18_000,
+            effective_colors: 512,
+            top_10_coverage: 0.22,
+            top_50_coverage: 0.49,
+            color_variance: 78.0,
+            edge_density: 0.012,
+            alpha_coverage: 1.0,
+            dominant_colors: vec!["#808080".to_string()],
+            image_type: ImageKind::Illustration,
+            complexity: Complexity::Medium,
+        };
+        let metrics = QualityMetrics {
+            ssim: 0.996,
+            ssim_perceptual: 0.997,
+            local_ssim_p10: 0.92,
+            local_ssim_min: 0.89,
+            gradient_similarity: 0.96,
+            edge_similarity: 0.89,
+            edge_precision: 0.90,
+            edge_recall: 0.89,
+            edge_f1: 0.89,
+            foreground_iou: 0.98,
+            color_similarity: 0.95,
+            fidelity_score: 0.93,
+            delta_e: 1.8,
+            topology_score: 0.9,
+            psnr: 31.0,
+            mae: 1.4,
+            file_size: 18_000,
+            path_count: 36,
+            primitive_count: 0,
+            weighted_path_count: 36.0,
+            has_gradients: false,
+        };
+        let report = VectorizationReport {
+            analysis: analysis.clone(),
+            settings: adaptive_trace_settings(&analysis, QualityPreset::Figma),
+            quality_preset: QualityPreset::Figma,
+            metrics,
+        };
+
+        assert!(!super::should_stop_quality_search(
+            &analysis,
+            Some(&(String::new(), report, 0.93)),
+            &VectorizeOptions {
+                target_ssim: 0.998,
+                max_file_size: 100_000,
+                max_iterations: 2,
+                quality: Some(QualityPreset::Figma),
+            },
+        ));
     }
 
 }

@@ -1503,7 +1503,7 @@ fn benchmark_efficiency_score(entry: &BenchmarkEntry) -> f64 {
             0.55,
         ),
         (
-            budget_efficiency(entry.report.metrics.path_count as f64, path_budget),
+            budget_efficiency(entry.report.metrics.weighted_path_count, path_budget),
             0.45,
         ),
     ])

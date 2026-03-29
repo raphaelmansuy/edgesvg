@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="140" height="32" viewBox="0 0 140 32">
+  <defs>
+    <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <!-- Icon: raster grid → smooth path arrow -->
+  <rect x="1" y="6" width="9" height="9" rx="1.5" fill="none" stroke="url(#logo-grad)" stroke-width="1.5"/>
+  <rect x="11" y="6" width="9" height="9" rx="1.5" fill="url(#logo-grad)" opacity="0.3"/>
+  <rect x="1" y="16" width="9" height="9" rx="1.5" fill="url(#logo-grad)" opacity="0.3"/>
+  <rect x="11" y="16" width="9" height="9" rx="1.5" fill="url(#logo-grad)" opacity="0.6"/>
+  <!-- Arrow -->
+  <path d="M23 15.5 L28 15.5 M25.5 13 L28 15.5 L25.5 18" stroke="#10b981" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- SVG path squiggle -->
+  <path d="M31 20 C34 12, 38 22, 41 15" stroke="url(#logo-grad)" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <!-- Wordmark -->
+  <text x="47" y="21" font-family="Inter, system-ui, sans-serif" font-size="15" font-weight="700" fill="#111827">Edge<tspan fill="#10b981">SVG</tspan></text>
+</svg>

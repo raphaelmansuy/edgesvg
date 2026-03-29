@@ -38,6 +38,9 @@ pub struct QualityMetrics {
     pub mae: f64,
     pub file_size: usize,
     pub path_count: usize,
+    pub primitive_count: usize,
+    pub weighted_path_count: f64,
+    pub has_gradients: bool,
 }
 
 pub fn compute_metrics(original: &DynamicImage, svg: &str) -> Result<QualityMetrics> {
@@ -117,6 +120,8 @@ pub(crate) fn compute_metrics_against(
         + topology_score * 0.04)
         .clamp(0.0, 1.0);
 
+    let (path_count, primitive_count) = count_shape_elements(svg);
+
     Ok(QualityMetrics {
         ssim,
         ssim_perceptual,
@@ -135,7 +140,10 @@ pub(crate) fn compute_metrics_against(
         psnr,
         mae,
         file_size: svg.len(),
-        path_count: count_shape_elements(svg),
+        path_count,
+        primitive_count,
+        weighted_path_count: weighted_shape_complexity(path_count, primitive_count),
+        has_gradients: svg.contains("<linearGradient") || svg.contains("<radialGradient"),
     })
 }
 
@@ -172,9 +180,9 @@ impl PreparedMetricsInput {
     }
 }
 
-fn count_shape_elements(svg: &str) -> usize {
-    [
-        "<path",
+fn count_shape_elements(svg: &str) -> (usize, usize) {
+    let path_count = svg.matches("<path").count();
+    let primitive_count = [
         "<rect",
         "<circle",
         "<ellipse",
@@ -184,12 +192,24 @@ fn count_shape_elements(svg: &str) -> usize {
     ]
     .into_iter()
     .map(|needle| svg.matches(needle).count())
-    .sum()
+    .sum();
+
+    (path_count, primitive_count)
+}
+
+fn weighted_shape_complexity(path_count: usize, primitive_count: usize) -> f64 {
+    path_count as f64 + primitive_count as f64 * 0.35
 }
 
 pub fn render_svg_to_image(svg: &str, width: u32, height: u32) -> Result<RgbaImage> {
     let mut options = usvg::Options::default();
-    options.fontdb_mut().load_system_fonts();
+    if svg.contains("<text")
+        || svg.contains("<tspan")
+        || svg.contains("<textPath")
+        || svg.contains("<altGlyph")
+    {
+        options.fontdb_mut().load_system_fonts();
+    }
     let tree = usvg::Tree::from_str(svg, &options).map_err(|e| anyhow!("invalid svg: {e}"))?;
 
     let mut pixmap =
@@ -817,7 +837,8 @@ mod tests {
 
     use super::{
         compute_local_ssim_distribution, compute_metrics, count_shape_elements,
-        render_svg_file_to_png_with_min_longest_side, BENCHMARK_REFERENCE_MIN_LONGEST_SIDE,
+        render_svg_file_to_png_with_min_longest_side, weighted_shape_complexity,
+        BENCHMARK_REFERENCE_MIN_LONGEST_SIDE,
     };
 
     #[test]
@@ -882,6 +903,12 @@ mod tests {
     #[test]
     fn path_count_includes_native_shape_elements() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/><circle cx="2" cy="2" r="1"/><path d="M0 0L1 1Z"/></svg>"##;
-        assert_eq!(count_shape_elements(svg), 3);
+        assert_eq!(count_shape_elements(svg), (1, 2));
+    }
+
+    #[test]
+    fn weighted_shape_complexity_discount_primitives() {
+        assert_eq!(weighted_shape_complexity(4, 0), 4.0);
+        assert_eq!(weighted_shape_complexity(4, 2), 4.7);
     }
 }

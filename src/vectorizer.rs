@@ -535,7 +535,10 @@ fn should_attempt_primitive_detection(
         return true;
     }
 
-    width >= 4 && height >= 4 && area * 100 >= bbox_area * 55 && area * 100 <= bbox_area * 90
+    width >= 4
+        && height >= 4
+        && (area * 100 >= bbox_area * 94
+            || (area * 100 >= bbox_area * 55 && area * 100 <= bbox_area * 90))
 }
 
 fn detect_primitive(mask: &BinaryImage, rect: BoundingRect, color: Color) -> Option<SvgPrimitive> {
@@ -545,8 +548,9 @@ fn detect_primitive(mask: &BinaryImage, rect: BoundingRect, color: Color) -> Opt
 
     let bbox_area = mask.width * mask.height;
     let area = mask.area() as usize;
+    let fill_ratio = area as f64 / bbox_area as f64;
 
-    if area == bbox_area {
+    if area == bbox_area || (fill_ratio >= 0.94 && !has_internal_holes(mask)) {
         return Some(SvgPrimitive::Rect {
             x: rect.left as f64,
             y: rect.top as f64,
@@ -560,7 +564,6 @@ fn detect_primitive(mask: &BinaryImage, rect: BoundingRect, color: Color) -> Opt
         return None;
     }
 
-    let fill_ratio = area as f64 / bbox_area as f64;
     if !(0.55..=0.90).contains(&fill_ratio) || has_internal_holes(mask) {
         return None;
     }
@@ -699,6 +702,27 @@ mod tests {
         let primitive = detect_primitive(
             &mask,
             BoundingRect::new_x_y_w_h(4, 3, 8, 6),
+            visioncortex::Color::color(&visioncortex::ColorName::Black),
+        )
+        .expect("expected rect primitive");
+
+        assert!(matches!(primitive, super::SvgPrimitive::Rect { .. }));
+    }
+
+    #[test]
+    fn primitive_detection_emits_rect_for_near_filled_box() {
+        let mut mask = BinaryImage::new_w_h(10, 10);
+        for y in 0..10 {
+            for x in 0..10 {
+                if (x, y) != (0, 0) && (x, y) != (9, 9) {
+                    mask.set_pixel(x, y, true);
+                }
+            }
+        }
+
+        let primitive = detect_primitive(
+            &mask,
+            BoundingRect::new_x_y_w_h(4, 3, 10, 10),
             visioncortex::Color::color(&visioncortex::ColorName::Black),
         )
         .expect("expected rect primitive");

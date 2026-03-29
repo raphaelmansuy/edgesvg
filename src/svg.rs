@@ -2,6 +2,21 @@ use regex::Regex;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
+#[derive(Debug, Clone)]
+pub struct LinearGradientStop {
+    pub offset: f64,
+    pub color: [u8; 3],
+}
+
+#[derive(Debug, Clone)]
+pub struct LinearGradientSpec {
+    pub x1: f64,
+    pub y1: f64,
+    pub x2: f64,
+    pub y2: f64,
+    pub stops: Vec<LinearGradientStop>,
+}
+
 fn path_attr_re() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| Regex::new(r#"d="([^"]+)""#).expect("valid path attribute regex"))
@@ -132,6 +147,21 @@ fn space_close_re() -> &'static Regex {
     RE.get_or_init(|| Regex::new(r#"\s+>"#).expect("valid closing tag spacing regex"))
 }
 
+fn svg_open_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"(?s)^.*?<svg\b[^>]*>"#).expect("valid svg open regex"))
+}
+
+fn svg_close_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"(?s)</svg>\s*$"#).expect("valid svg close regex"))
+}
+
+fn fill_attr_only_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r#"fill="[^"]+""#).expect("valid fill attribute regex"))
+}
+
 pub fn optimize_svg(svg: &str, precision: u32) -> String {
     if !svg.contains("<svg") || !svg.contains("</svg>") {
         return svg.to_owned();
@@ -144,6 +174,101 @@ pub fn optimize_svg(svg: &str, precision: u32) -> String {
     let optimized = remove_redundant_attributes(&optimized);
     let optimized = clean_namespaces(&optimized, has_namespace_artifacts);
     final_cleanup(&optimized)
+}
+
+pub fn wrap_svg_with_gradient_background(
+    width: u32,
+    height: u32,
+    gradient: &LinearGradientSpec,
+    overlay_svg: &str,
+) -> String {
+    let content = extract_svg_content(overlay_svg);
+    let mut out = String::new();
+    out.push_str(&format!(
+        r#"<svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">"#
+    ));
+    out.push_str("<defs>");
+    append_linear_gradient_def(&mut out, "bgGradient", gradient);
+    out.push_str("</defs>");
+    out.push_str(&format!(
+        r#"<rect width="{width}" height="{height}" fill="url(#bgGradient)"/>"#
+    ));
+    out.push_str(&content);
+    out.push_str("</svg>");
+    out
+}
+
+pub fn wrap_svg_with_gradient_surface(
+    width: u32,
+    height: u32,
+    gradient: &LinearGradientSpec,
+    surface_svg: &str,
+    overlay_svg: &str,
+) -> String {
+    let surface = apply_gradient_fill(&extract_svg_content(surface_svg), "surfaceGradient");
+    let overlay = extract_svg_content(overlay_svg);
+    let mut out = String::new();
+    out.push_str(&format!(
+        r#"<svg version="1.1" xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}">"#
+    ));
+    out.push_str("<defs>");
+    append_linear_gradient_def(&mut out, "surfaceGradient", gradient);
+    out.push_str("</defs>");
+    out.push_str(&surface);
+    out.push_str(&overlay);
+    out.push_str("</svg>");
+    out
+}
+
+fn extract_svg_content(svg: &str) -> String {
+    let stripped = xml_re().replace_all(svg, "");
+    let stripped = comment_re().replace_all(&stripped, "");
+    let stripped = svg_open_re().replace(&stripped, "");
+    let stripped = svg_close_re().replace(&stripped, "");
+    stripped.trim().to_string()
+}
+
+fn append_linear_gradient_def(out: &mut String, id: &str, gradient: &LinearGradientSpec) {
+    out.push_str(&format!(
+        r#"<linearGradient id="{id}" x1="{}" y1="{}" x2="{}" y2="{}" gradientUnits="userSpaceOnUse">"#,
+        format_number(gradient.x1),
+        format_number(gradient.y1),
+        format_number(gradient.x2),
+        format_number(gradient.y2),
+    ));
+    for stop in &gradient.stops {
+        out.push_str(&format!(
+            "<stop offset=\"{}%\" stop-color=\"#{:02x}{:02x}{:02x}\"/>",
+            format_number((stop.offset * 100.0).clamp(0.0, 100.0)),
+            stop.color[0],
+            stop.color[1],
+            stop.color[2],
+        ));
+    }
+    out.push_str("</linearGradient>");
+}
+
+fn apply_gradient_fill(svg_content: &str, gradient_id: &str) -> String {
+    fill_attr_only_re()
+        .replace_all(svg_content, format!(r#"fill="url(#{gradient_id})""#))
+        .to_string()
+}
+
+fn format_number(value: f64) -> String {
+    let mut formatted = format!("{value:.4}");
+    if formatted.contains('.') {
+        while formatted.ends_with('0') {
+            formatted.pop();
+        }
+        if formatted.ends_with('.') {
+            formatted.pop();
+        }
+    }
+    if formatted == "-0" {
+        "0".to_string()
+    } else {
+        formatted
+    }
 }
 
 fn round_path_coordinates(svg: &str, precision: u32) -> String {
@@ -361,7 +486,10 @@ fn final_cleanup(svg: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{optimize_color, optimize_svg, round_path_data};
+    use super::{
+        optimize_color, optimize_svg, round_path_data, wrap_svg_with_gradient_surface,
+        LinearGradientSpec, LinearGradientStop,
+    };
 
     #[test]
     fn rounds_numeric_precision_like_reference_optimizer() {
@@ -400,5 +528,34 @@ mod tests {
         assert_eq!(optimized.matches("<path").count(), 2);
         assert!(optimized.contains(r#"d="M0 0 M1 1""#));
         assert!(!optimized.contains(r#"transform="translate(0,0)""#));
+    }
+
+    #[test]
+    fn wrap_svg_with_gradient_surface_replaces_mask_fill_only() {
+        let gradient = LinearGradientSpec {
+            x1: 0.0,
+            y1: 0.0,
+            x2: 10.0,
+            y2: 0.0,
+            stops: vec![
+                LinearGradientStop {
+                    offset: 0.0,
+                    color: [0, 0, 0],
+                },
+                LinearGradientStop {
+                    offset: 1.0,
+                    color: [255, 255, 255],
+                },
+            ],
+        };
+        let surface_svg = r##"<svg><path d="M0 0H10V10H0Z" fill="#000000"/></svg>"##;
+        let overlay_svg = r##"<svg><path d="M1 1H3V3H1Z" fill="#ff0000"/></svg>"##;
+
+        let wrapped =
+            wrap_svg_with_gradient_surface(10, 10, &gradient, surface_svg, overlay_svg);
+
+        assert!(wrapped.contains(r#"id="surfaceGradient""#));
+        assert!(wrapped.contains(r#"fill="url(#surfaceGradient)""#));
+        assert!(wrapped.contains(r##"fill="#ff0000""##));
     }
 }

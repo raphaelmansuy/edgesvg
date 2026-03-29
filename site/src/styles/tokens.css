@@ -1,0 +1,34 @@
+/* EdgeSVG Design tokens */
+:root {
+  --es-accent: #10b981;       /* emerald green — vectorization/precision */
+  --es-accent-dark: #059669;
+  --es-accent-glow: rgba(16, 185, 129, 0.15);
+  --es-purple: #8b5cf6;
+  --es-blue: #3b82f6;
+  --es-text-primary: #111827;
+  --es-text-secondary: #4b5563;
+  --es-bg: #ffffff;
+  --es-bg-subtle: #f9fafb;
+  --es-border: #e5e7eb;
+  --es-code-bg: #1e293b;
+
+  /* Override Starlight accent to teal/emerald */
+  --sl-color-accent-low: #d1fae5;
+  --sl-color-accent: #10b981;
+  --sl-color-accent-high: #059669;
+  --sl-color-white: #f0fdf4;
+
+  --sl-font: 'Inter', system-ui, sans-serif;
+  --sl-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+[data-theme='dark'] {
+  --es-text-primary: #f9fafb;
+  --es-text-secondary: #9ca3af;
+  --es-bg: #0f172a;
+  --es-bg-subtle: #1e293b;
+  --es-border: #1e293b;
+  --sl-color-accent-low: #022c22;
+  --sl-color-accent: #34d399;
+  --sl-color-accent-high: #6ee7b7;
+}

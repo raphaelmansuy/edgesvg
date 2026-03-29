@@ -22,6 +22,11 @@ demo/dist/
 demo/.vite/
 demo/wasm-pkg/
 
+# Site build artifacts
+site/node_modules/
+site/dist/
+site/.astro/
+
 # Tooling caches
 .DS_Store
 Thumbs.db

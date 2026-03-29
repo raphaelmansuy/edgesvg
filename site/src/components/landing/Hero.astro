@@ -1,0 +1,464 @@
+---
+// Hero override for Starlight — cinematic landing hero for EdgeSVG
+const base = import.meta.env.BASE_URL;
+const installCmd = 'pip install edgesvg';
+---
+<section class="hero" aria-label="EdgeSVG introduction">
+  <div class="hero-bg-effects" aria-hidden="true">
+    <canvas id="hero-canvas"></canvas>
+    <div class="hero-grid"></div>
+    <div class="hero-glow hero-glow-1"></div>
+    <div class="hero-glow hero-glow-2"></div>
+  </div>
+  <div class="hero-content">
+    <div class="hero-eyebrow">
+      <span class="eyebrow-badge">Production-Grade Vectorization</span>
+      <span class="eyebrow-text">Scored output · Zero ML · 5 SDK languages</span>
+      <svg class="eyebrow-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+    </div>
+    <h1 class="hero-title">
+      <span class="hero-line-1">Raster to SVG.</span>
+      <span class="hero-line-2">Scored. Fast. <span class="hero-accent">Open Source.</span></span>
+    </h1>
+    <p class="hero-subtitle">
+      EdgeSVG converts PNG, JPG, and WebP assets into production-quality SVGs — in Python,
+      Node.js, the browser, and Rust. Every output is scored with SSIM, edge&nbsp;similarity,
+      IoU, and topology so you know exactly how good it&nbsp;is.
+    </p>
+    <div class="hero-actions">
+      <a href={`${base}getting-started/quick-start-python/`} class="btn-primary">
+        Get Started
+        <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+      <a href={`${base}guides/demo/`} class="btn-demo">
+        Live Demo
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+      </a>
+      <a href="https://github.com/raphaelmansuy/edgesvg" target="_blank" rel="noopener noreferrer" class="btn-secondary">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        Star on GitHub
+      </a>
+    </div>
+    <div class="install-bar" role="group" aria-label="Install command">
+      <span class="install-prompt" aria-hidden="true">$</span>
+      <code>{installCmd}</code>
+      <button class="copy-btn" aria-label="Copy install command" data-copy={installCmd}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+      </button>
+    </div>
+    <div class="hero-metrics" aria-label="Key metrics">
+      <div class="metric">
+        <span class="metric-value" data-count="15">0</span><span class="metric-suffix">+</span>
+        <span class="metric-label">quality metrics</span>
+      </div>
+      <div class="metric-sep" aria-hidden="true"></div>
+      <div class="metric">
+        <span class="metric-value" data-count="5">0</span>
+        <span class="metric-label">SDK languages</span>
+      </div>
+      <div class="metric-sep" aria-hidden="true"></div>
+      <div class="metric">
+        <span class="metric-value" data-count="0">0</span>
+        <span class="metric-label">ML dependencies</span>
+      </div>
+      <div class="metric-sep" aria-hidden="true"></div>
+      <div class="metric">
+        <span class="metric-value" data-count="11">0</span>
+        <span class="metric-label">CLI commands</span>
+      </div>
+    </div>
+    <div class="hero-trust">
+      <span class="trust-label">Works with</span>
+      <div class="trust-logos">
+        <span class="trust-item">Python</span>
+        <span class="trust-dot"></span>
+        <span class="trust-item">Node.js</span>
+        <span class="trust-dot"></span>
+        <span class="trust-item">Rust</span>
+        <span class="trust-dot"></span>
+        <span class="trust-item">WebAssembly</span>
+        <span class="trust-dot"></span>
+        <span class="trust-item">CLI</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+  // Copy button
+  const copyBtn = document.querySelector('.copy-btn') as HTMLButtonElement | null;
+  if (copyBtn) {
+    copyBtn.addEventListener('click', async () => {
+      const text = copyBtn.dataset.copy || '';
+      await navigator.clipboard.writeText(text).catch(() => {});
+      copyBtn.classList.add('copied');
+      setTimeout(() => copyBtn.classList.remove('copied'), 1800);
+    });
+  }
+
+  // Animated counters
+  const metricEls = document.querySelectorAll('.metric-value[data-count]');
+  const animateCounter = (el: Element) => {
+    const target = parseInt((el as HTMLElement).dataset.count || '0', 10);
+    if (target === 0) { el.textContent = '0'; return; }
+    let current = 0;
+    const step = Math.max(1, Math.floor(target / 40));
+    const timer = setInterval(() => {
+      current = Math.min(current + step, target);
+      el.textContent = String(current);
+      if (current >= target) clearInterval(timer);
+    }, 30);
+  };
+  const io = new IntersectionObserver((entries) => {
+    entries.forEach(e => { if (e.isIntersecting) { animateCounter(e.target); io.unobserve(e.target); } });
+  }, { threshold: 0.3 });
+  metricEls.forEach(el => io.observe(el));
+
+  // Three.js canvas — raster-to-vector transformation animation
+  const canvas = document.getElementById('hero-canvas') as HTMLCanvasElement | null;
+  if (canvas) {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!prefersReducedMotion) {
+      import('three').then(THREE => {
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, canvas.clientWidth / canvas.clientHeight, 0.1, 100);
+        camera.position.z = 12;
+        const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'low-power' });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+
+        const isDark = () => document.documentElement.dataset.theme === 'dark' || document.documentElement.classList.contains('dark');
+        const primaryColor = new THREE.Color(isDark() ? '#34d399' : '#10b981');
+        const secondaryColor = new THREE.Color(isDark() ? '#60a5fa' : '#3b82f6');
+
+        // --- Floating raster grid panels (representing bitmaps) ---
+        const panels: { mesh: THREE.Mesh; basePos: THREE.Vector3; phase: number; speed: number }[] = [];
+        const gridPositions = [
+          { x: -5, y: 2, z: -2 }, { x: -3.5, y: -1.5, z: 0 },
+          { x: 4, y: 2.5, z: -1 }, { x: 5.5, y: -1, z: -3 },
+          { x: 0, y: -2.5, z: -4 },
+        ];
+        for (const pos of gridPositions) {
+          const w = 1.6 + Math.random() * 0.6;
+          const h = 1.6 + Math.random() * 0.6;
+          const geo = new THREE.PlaneGeometry(w, h);
+          const mat = new THREE.MeshBasicMaterial({ color: primaryColor, wireframe: false, transparent: true, opacity: isDark() ? 0.06 : 0.04 });
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.position.set(pos.x, pos.y, pos.z);
+          mesh.rotation.z = (Math.random() - 0.5) * 0.3;
+          // edges
+          const edgeGeo = new THREE.EdgesGeometry(geo);
+          const edgeMat = new THREE.LineBasicMaterial({ color: primaryColor, transparent: true, opacity: 0.25 });
+          const edges = new THREE.LineSegments(edgeGeo, edgeMat);
+          edges.position.copy(mesh.position);
+          edges.rotation.copy(mesh.rotation);
+          // pixel grid lines inside
+          const lineGrp = new THREE.Group();
+          const cols = 4; const rows = 4;
+          for (let c = 0; c <= cols; c++) {
+            const lx = -w/2 + (w/cols)*c;
+            const lineG = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(lx,-h/2,0), new THREE.Vector3(lx,h/2,0)]);
+            lineGrp.add(new THREE.Line(lineG, new THREE.LineBasicMaterial({ color: primaryColor, transparent: true, opacity: 0.12 })));
+          }
+          for (let r = 0; r <= rows; r++) {
+            const ly = -h/2 + (h/rows)*r;
+            const lineG = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-w/2,ly,0), new THREE.Vector3(w/2,ly,0)]);
+            lineGrp.add(new THREE.Line(lineG, new THREE.LineBasicMaterial({ color: primaryColor, transparent: true, opacity: 0.12 })));
+          }
+          lineGrp.position.copy(mesh.position);
+          lineGrp.rotation.copy(mesh.rotation);
+          scene.add(mesh); scene.add(edges); scene.add(lineGrp);
+          panels.push({ mesh, basePos: new THREE.Vector3(pos.x, pos.y, pos.z), phase: Math.random() * Math.PI * 2, speed: 0.3 + Math.random() * 0.4 });
+        }
+
+        // --- Bezier path curves (representing SVG paths) ---
+        const curves: THREE.Line[] = [];
+        const curveData = [
+          { pts: [[-7,0],[-4,3],[-1,-2],[2,2],[5,-1]], color: primaryColor },
+          { pts: [[-6,-2],[-2,1],[1,-3],[4,0]], color: secondaryColor },
+          { pts: [[7,3],[4,0],[0,2],[-3,-1]], color: primaryColor },
+        ];
+        for (const cd of curveData) {
+          const v3pts = cd.pts.map(([x,y]) => new THREE.Vector3(x,y,0.5));
+          const curve = new THREE.CatmullRomCurve3(v3pts);
+          const pts = curve.getPoints(60);
+          const geo = new THREE.BufferGeometry().setFromPoints(pts);
+          const mat = new THREE.LineBasicMaterial({ color: cd.color, transparent: true, opacity: 0.4 });
+          const line = new THREE.Line(geo, mat);
+          scene.add(line);
+          curves.push(line);
+        }
+
+        // --- Particles ---
+        const N = 180;
+        const pGeo = new THREE.BufferGeometry();
+        const pos3 = new Float32Array(N * 3);
+        const vel = new Float32Array(N * 3);
+        for (let i = 0; i < N; i++) {
+          pos3[i*3]   = (Math.random()-0.5)*20;
+          pos3[i*3+1] = (Math.random()-0.5)*14;
+          pos3[i*3+2] = (Math.random()-0.5)*6;
+          vel[i*3]   = (Math.random()-0.5)*0.012;
+          vel[i*3+1] = (Math.random()-0.5)*0.012;
+          vel[i*3+2] = 0;
+        }
+        pGeo.setAttribute('position', new THREE.BufferAttribute(pos3, 3));
+        const pMat = new THREE.PointsMaterial({ color: primaryColor, size: 0.06, transparent: true, opacity: 0.5 });
+        const particles = new THREE.Points(pGeo, pMat);
+        scene.add(particles);
+
+        let raf = 0;
+        const animate = (t: number) => {
+          raf = requestAnimationFrame(animate);
+          const time = t * 0.001;
+          for (const p of panels) {
+            const y = p.basePos.y + Math.sin(time * p.speed + p.phase) * 0.25;
+            const rx = Math.sin(time * 0.2 + p.phase) * 0.05;
+            p.mesh.position.y = y;
+            p.mesh.rotation.x = rx;
+          }
+          for (const c of curves) { (c.material as THREE.LineBasicMaterial).opacity = 0.3 + 0.1 * Math.sin(time * 0.5); }
+          const posAttr = pGeo.attributes.position as THREE.BufferAttribute;
+          for (let i = 0; i < N; i++) {
+            pos3[i*3]   += vel[i*3];
+            pos3[i*3+1] += vel[i*3+1];
+            if (pos3[i*3] > 10) pos3[i*3] = -10;
+            if (pos3[i*3] < -10) pos3[i*3] = 10;
+            if (pos3[i*3+1] > 7) pos3[i*3+1] = -7;
+            if (pos3[i*3+1] < -7) pos3[i*3+1] = 7;
+          }
+          posAttr.needsUpdate = true;
+          renderer.render(scene, camera);
+        };
+        raf = requestAnimationFrame(animate);
+
+        const ro = new ResizeObserver(() => {
+          renderer.setSize(canvas.clientWidth, canvas.clientHeight, false);
+          camera.aspect = canvas.clientWidth / canvas.clientHeight;
+          camera.updateProjectionMatrix();
+        });
+        ro.observe(canvas);
+      }).catch(() => {});
+    }
+  }
+</script>
+
+<style>
+  .hero {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 90vh;
+    padding: 6rem 2rem 5rem;
+    text-align: center;
+    overflow: hidden;
+  }
+
+  .hero-bg-effects {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  #hero-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0.8;
+  }
+
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(rgba(16,185,129,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(16,185,129,0.07) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.6;
+    mask-image: radial-gradient(ellipse at center, black 0%, transparent 70%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 0%, transparent 70%);
+  }
+
+  .hero-glow {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(100px);
+    opacity: 0.12;
+  }
+  .hero-glow-1 { width: 500px; height: 500px; background: var(--sl-color-accent, #10b981); top: -150px; right: -80px; }
+  .hero-glow-2 { width: 400px; height: 400px; background: #6366f1; bottom: -150px; left: -80px; }
+
+  .hero-content {
+    position: relative;
+    max-width: 860px;
+    margin: 0 auto;
+    z-index: 1;
+  }
+
+  /* Eyebrow */
+  .hero-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  .eyebrow-badge {
+    display: inline-block;
+    padding: 0.2rem 0.7rem;
+    background: var(--es-accent-glow, rgba(16,185,129,0.15));
+    border: 1px solid var(--sl-color-accent, #10b981);
+    border-radius: 9999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: var(--sl-color-accent, #10b981);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .eyebrow-text { font-size: 0.85rem; color: var(--es-text-secondary, #6b7280); }
+  .eyebrow-arrow { color: var(--es-text-secondary, #6b7280); flex-shrink: 0; }
+
+  /* Title */
+  .hero-title {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    margin: 0 0 1.5rem;
+    line-height: 1.1;
+    font-size: clamp(2.6rem, 7vw, 4.2rem);
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--es-text-primary, #111827);
+  }
+  .hero-line-1 { display: block; }
+  .hero-line-2 { display: block; }
+  .hero-accent {
+    background: linear-gradient(135deg, #10b981, #3b82f6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Subtitle */
+  .hero-subtitle {
+    font-size: clamp(1rem, 2.2vw, 1.2rem);
+    color: var(--es-text-secondary, #4b5563);
+    max-width: 640px;
+    margin: 0 auto 2.5rem;
+    line-height: 1.65;
+  }
+
+  /* Actions */
+  .hero-actions {
+    display: flex;
+    gap: 0.85rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+  }
+  .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.6rem;
+    background: var(--sl-color-accent, #10b981);
+    color: #fff;
+    border-radius: 0.5rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-decoration: none;
+    transition: filter 0.2s, transform 0.2s;
+  }
+  .btn-primary:hover { filter: brightness(1.1); transform: translateY(-1px); }
+  .btn-demo {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.4rem;
+    background: transparent;
+    color: var(--sl-color-accent, #10b981);
+    border: 2px solid var(--sl-color-accent, #10b981);
+    border-radius: 0.5rem;
+    font-weight: 700;
+    font-size: 0.95rem;
+    text-decoration: none;
+    transition: background 0.2s, color 0.2s, transform 0.2s;
+  }
+  .btn-demo:hover { background: var(--sl-color-accent, #10b981); color: #fff; transform: translateY(-1px); }
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.4rem;
+    background: transparent;
+    color: var(--es-text-secondary, #4b5563);
+    border: 1px solid var(--es-border, #e5e7eb);
+    border-radius: 0.5rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    text-decoration: none;
+    transition: border-color 0.2s, color 0.2s, transform 0.2s;
+  }
+  .btn-secondary:hover { border-color: var(--sl-color-accent, #10b981); color: var(--sl-color-accent, #10b981); transform: translateY(-1px); }
+
+  /* Install bar */
+  .install-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    background: var(--es-code-bg, #1e293b);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 0.5rem;
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.88rem;
+    color: #e2e8f0;
+    margin-bottom: 2rem;
+  }
+  .install-prompt { color: #34d399; font-weight: 700; }
+  .install-bar code { background: none; padding: 0; color: inherit; }
+  .copy-btn { background: none; border: none; cursor: pointer; color: #94a3b8; padding: 0.2rem; transition: color 0.15s; line-height: 1; }
+  .copy-btn:hover { color: #34d399; }
+  .copy-btn.copied { color: #34d399; }
+
+  /* Metrics */
+  .hero-metrics {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+  .metric { display: flex; flex-direction: column; align-items: center; line-height: 1.2; }
+  .metric-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: var(--sl-color-accent, #10b981);
+    letter-spacing: -0.03em;
+  }
+  .metric-suffix { font-size: 1.3rem; font-weight: 700; color: var(--sl-color-accent, #10b981); }
+  .metric-label { font-size: 0.78rem; color: var(--es-text-secondary, #6b7280); margin-top: 0.1rem; }
+  .metric-sep { width: 1px; height: 36px; background: var(--es-border, #e5e7eb); opacity: 0.5; }
+
+  /* Trust bar */
+  .hero-trust { display: flex; align-items: center; gap: 0.75rem; justify-content: center; font-size: 0.85rem; }
+  .trust-label { color: var(--es-text-secondary, #9ca3af); }
+  .trust-item { color: var(--es-text-secondary, #6b7280); font-weight: 500; }
+  .trust-dot { width: 3px; height: 3px; border-radius: 50%; background: var(--es-border, #d1d5db); }
+
+  @media (max-width: 640px) {
+    .hero { padding: 5rem 1.25rem 3rem; }
+    .hero-metrics { gap: 0.75rem; }
+    .metric-sep { display: none; }
+    .install-bar { width: calc(100% - 2rem); justify-content: center; }
+    .hero-trust { flex-wrap: wrap; }
+    .hero-glow-1, .hero-glow-2 { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #hero-canvas { display: none; }
+  }
+</style>

@@ -33,7 +33,9 @@ The `QualityMetrics` report includes:
 - `psnr`
 - `mae`
 - `file_size`
-- `path_count`
+- `path_count` (raw `<path>` elements)
+- `primitive_count` (native shapes such as `rect`, `circle`, `ellipse`, `line`, `polygon`, `polyline`)
+- `weighted_path_count` (primitive-aware structural complexity used for editability-sensitive scoring)
 
 ## Mode Selection
 

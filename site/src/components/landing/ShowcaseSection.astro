@@ -1,0 +1,66 @@
+---
+interface ShowcaseItem {
+  icon: string;
+  title: string;
+  description: string;
+  tags: string[];
+  href?: string;
+}
+interface Props {
+  title: string;
+  subtitle: string;
+  items: ShowcaseItem[];
+}
+const { title, subtitle, items } = Astro.props;
+
+const iconEmoji: Record<string,string> = {
+  design: '🎨',
+  automation: '⚙️',
+  web: '🌐',
+  rag: '🔍',
+  batch: '📦',
+  browser: '💻',
+  logo: '✦',
+  pipeline: '🔄',
+  ci: '🚀',
+};
+---
+<section class="showcase">
+  <div class="sc-inner">
+    <div class="sc-header">
+      <h2>{title}</h2>
+      <p>{subtitle}</p>
+    </div>
+    <div class="sc-grid">
+      {items.map(item => (
+        <div class="sc-card">
+          <div class="sc-icon">{iconEmoji[item.icon] || '◆'}</div>
+          <h3>{item.title}</h3>
+          <p>{item.description}</p>
+          <div class="sc-tags">
+            {item.tags.map(tag => <span class="sc-tag">{tag}</span>)}
+          </div>
+          {item.href && <a href={item.href} class="sc-link">Learn more →</a>}
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .showcase { padding: 5rem 2rem; background: var(--es-bg-subtle, #f9fafb); }
+  .sc-inner { max-width: 1100px; margin: 0 auto; }
+  .sc-header { text-align: center; margin-bottom: 3rem; }
+  .sc-header h2 { font-size: clamp(1.75rem, 4vw, 2.4rem); font-weight: 800; margin-bottom: 0.75rem; color: var(--es-text-primary, #111827); }
+  .sc-header p { font-size: 1.05rem; color: var(--es-text-secondary, #4b5563); max-width: 600px; margin: 0 auto; }
+  .sc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.25rem; }
+  .sc-card { background: var(--es-bg, #fff); border: 1px solid var(--es-border, #e5e7eb); border-radius: 0.75rem; padding: 1.75rem; transition: border-color 0.2s, box-shadow 0.2s; }
+  .sc-card:hover { border-color: var(--sl-color-accent, #10b981); box-shadow: 0 4px 20px rgba(16,185,129,0.08); }
+  .sc-icon { font-size: 1.75rem; margin-bottom: 0.75rem; }
+  .sc-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 0.5rem; color: var(--es-text-primary, #111827); }
+  .sc-card p { font-size: 0.875rem; color: var(--es-text-secondary, #4b5563); line-height: 1.6; margin-bottom: 0.75rem; }
+  .sc-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-bottom: 0.75rem; }
+  .sc-tag { font-size: 0.72rem; padding: 0.2rem 0.55rem; background: var(--es-accent-glow, rgba(16,185,129,0.1)); color: var(--sl-color-accent, #10b981); border-radius: 9999px; font-weight: 600; }
+  .sc-link { font-size: 0.85rem; font-weight: 600; color: var(--sl-color-accent, #10b981); text-decoration: none; }
+  .sc-link:hover { text-decoration: underline; }
+</style>

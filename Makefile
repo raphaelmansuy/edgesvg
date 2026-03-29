@@ -8,7 +8,7 @@ SAMPLE_LIMIT := 90
 SMOKE_LIMIT := 12
 .DEFAULT_GOAL := help
 
-.PHONY: help fmt test build verify verify-all python-sdk node-sdk wasm-sdk bench bench-smoke bench-sample bench-full clean-bench demo-build demo
+.PHONY: help fmt test build verify verify-all python-sdk node-sdk wasm-sdk bench bench-smoke bench-sample bench-full clean-bench demo-build demo site-dev site-build site-preview
 
 help:
 	@printf "\nEdgeSVG Workflow\n\n"
@@ -20,6 +20,9 @@ help:
 	@printf "  %-20s %s\n" "make wasm-sdk" "Check the WASM crate"
 	@printf "  %-20s %s\n" "make demo-build" "Rebuild WASM and install demo deps"
 	@printf "  %-20s %s\n" "make demo" "Rebuild WASM and launch demo dev server"
+	@printf "  %-20s %s\n" "make site-dev" "Start Astro docs site dev server"
+	@printf "  %-20s %s\n" "make site-build" "Build Astro docs site for production"
+	@printf "  %-20s %s\n" "make site-preview" "Build and preview Astro docs site"
 	@printf "  %-20s %s\n" "make bench" "Alias for make bench-sample"
 	@printf "  %-20s %s\n" "make bench-smoke" "Fast 12-asset golden benchmark"
 	@printf "  %-20s %s\n" "make bench-sample" "Main 90-asset benchmark with diff"
@@ -81,3 +84,12 @@ demo-build:
 
 demo: demo-build
 	cd demo && npm run dev
+
+site-dev:
+	cd site && pnpm dev
+
+site-build:
+	cd site && pnpm build
+
+site-preview: site-build
+	cd site && pnpm preview

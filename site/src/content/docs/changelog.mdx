@@ -1,0 +1,68 @@
+---
+title: Changelog
+description: Release history for EdgeSVG.
+---
+
+All notable changes to EdgeSVG are documented here. EdgeSVG follows [Semantic Versioning](https://semver.org/).
+
+---
+
+## [Unreleased]
+
+- WASM SIMD acceleration for browsers that support it
+- Streaming batch API
+- SVG path simplification post-processing
+
+---
+
+## [0.1.0] — 2025-01-14
+
+### Added
+
+**Core engine**
+- Raster-to-vector engine with 5 methods: `auto`, `logo`, `premium`, `smart`, `convert`
+- 16 quality metrics: SSIM, perceptual SSIM, edge similarity, edge precision, edge recall, EdgeF1, foreground IoU, color similarity, fidelity score, ΔE, topology score, PSNR, MAE, file size, path count, weighted path count
+- Composite quality grade: A+, A, B, C, D, F
+- Auto classification: detects logos, icons, illustrations, photos
+- Smart mode: iterative quality search with configurable SSIM target
+- Fallback chain: graceful degradation if preferred method fails
+
+**CLI**
+- `edgesvg convert` — single image conversion with `--json` report
+- `edgesvg batch` — parallel batch processing with glob patterns
+- `edgesvg benchmark` — golden-data benchmarking
+- `edgesvg inspect` — quality check existing SVG vs. source
+- All commands support `--json` output for CI integration
+
+**Python SDK** (`edgesvg`)
+- `vectorize(path, **opts)` — file-based conversion
+- `vectorize_bytes(data, **opts)` — in-memory conversion
+- PEP 561 type stubs
+- Wheels for Python 3.9–3.13 on Linux, macOS, Windows
+
+**Node.js SDK** (`edgesvg-node`)
+- `vectorize(path, opts?)` — async file-based conversion
+- `vectorizeBuffer(buf, opts?)` — async in-memory conversion
+- Full TypeScript types
+- Pre-built bindings for Node.js 18, 20, 22 on Linux, macOS, Windows
+
+**WebAssembly SDK** (`edgesvg-wasm`)
+- `vectorize(bytes, opts?)` — synchronous conversion in browser/edge
+- Works with Vite, Webpack 5, Next.js
+- Web Worker example for non-blocking UI
+- CDN distribution via jsDelivr
+
+**Documentation**
+- Full API reference for all four SDKs
+- Getting started guides for each platform
+- Algorithm deep-dive
+- All 16 quality metrics documented
+- Vectorization modes explained
+- Batch conversion guide
+- CI/CD integration guide
+- Interactive browser demo
+
+---
+
+[Unreleased]: https://github.com/raphaelmansuy/edgesvg/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/raphaelmansuy/edgesvg/releases/tag/v0.1.0

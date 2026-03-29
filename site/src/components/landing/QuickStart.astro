@@ -1,0 +1,85 @@
+---
+interface Tab {
+  label: string;
+  lang: string;
+  code: string;
+}
+interface Props {
+  title: string;
+  subtitle: string;
+  tabs: Tab[];
+}
+const { title, subtitle, tabs } = Astro.props;
+---
+<section class="quick-start">
+  <div class="qs-header">
+    <h2>{title}</h2>
+    <p>{subtitle}</p>
+  </div>
+  <div class="qs-tabs" role="tablist" aria-label="Installation and usage examples">
+    {tabs.map((tab, i) => (
+      <button role="tab" class={`qs-tab ${i === 0 ? 'active' : ''}`} data-tab={i} aria-selected={i === 0 ? 'true' : 'false'}>
+        {tab.label}
+      </button>
+    ))}
+  </div>
+  <div class="qs-panels">
+    {tabs.map((tab, i) => (
+      <div role="tabpanel" class={`qs-panel ${i === 0 ? 'active' : ''}`} data-panel={i}>
+        <div class="qs-panel-header">
+          <span class="qs-lang">{tab.lang}</span>
+          <button class="qs-copy" data-copy={tab.code} aria-label={`Copy ${tab.label} code`}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            Copy
+          </button>
+        </div>
+        <pre class="qs-code"><code>{tab.code}</code></pre>
+      </div>
+    ))}
+  </div>
+</section>
+
+<script>
+  // Tab switching
+  const tabBtns = document.querySelectorAll('.qs-tab');
+  const panels = document.querySelectorAll('.qs-panel');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = (btn as HTMLElement).dataset.tab;
+      tabBtns.forEach(b => { b.classList.remove('active'); (b as HTMLElement).setAttribute('aria-selected', 'false'); });
+      panels.forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      (btn as HTMLElement).setAttribute('aria-selected', 'true');
+      document.querySelector(`.qs-panel[data-panel="${idx}"]`)?.classList.add('active');
+    });
+  });
+
+  // Copy buttons
+  document.querySelectorAll('.qs-copy').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const text = (btn as HTMLElement).dataset.copy || '';
+      await navigator.clipboard.writeText(text).catch(() => {});
+      (btn as HTMLElement).textContent = '✓ Copied';
+      setTimeout(() => { (btn as HTMLElement).innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy`; }, 1800);
+    });
+  });
+</script>
+
+<style>
+  .quick-start { padding: 5rem 2rem; background: var(--es-bg-subtle, #f9fafb); margin: 2rem 0; }
+  .qs-header { text-align: center; margin-bottom: 2.5rem; max-width: 1100px; margin-left: auto; margin-right: auto; }
+  .qs-header h2 { font-size: clamp(1.75rem, 4vw, 2.4rem); font-weight: 800; margin-bottom: 0.75rem; color: var(--es-text-primary, #111827); }
+  .qs-header p { font-size: 1.05rem; color: var(--es-text-secondary, #4b5563); }
+  .qs-tabs { display: flex; gap: 0.35rem; justify-content: center; flex-wrap: wrap; max-width: 1100px; margin: 0 auto 0; padding-bottom: 0; background: none; }
+  .qs-tab { padding: 0.5rem 1.1rem; background: transparent; border: 1px solid var(--es-border, #e5e7eb); border-radius: 0.4rem 0.4rem 0 0; border-bottom: none; font-size: 0.88rem; font-weight: 600; cursor: pointer; color: var(--es-text-secondary, #4b5563); transition: background 0.15s, color 0.15s; }
+  .qs-tab.active { background: var(--es-code-bg, #1e293b); color: #e2e8f0; border-color: var(--es-code-bg, #1e293b); }
+  .qs-panels { max-width: 1100px; margin: 0 auto; }
+  .qs-panel { display: none; background: var(--es-code-bg, #1e293b); border: 1px solid rgba(255,255,255,0.08); border-radius: 0 0.5rem 0.5rem 0.5rem; overflow: hidden; }
+  .qs-panel.active { display: block; }
+  .qs-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.07); }
+  .qs-lang { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; font-family: var(--sl-font-mono, monospace); }
+  .qs-copy { display: inline-flex; align-items: center; gap: 0.35rem; background: none; border: 1px solid rgba(255,255,255,0.15); border-radius: 0.3rem; padding: 0.3rem 0.7rem; font-size: 0.78rem; color: #94a3b8; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
+  .qs-copy:hover { color: #34d399; border-color: #34d399; }
+  .qs-code { margin: 0; padding: 1.5rem; overflow-x: auto; font-family: var(--sl-font-mono, monospace); font-size: 0.875rem; line-height: 1.7; color: #e2e8f0; background: none; border: none; }
+  .qs-code code { background: none; padding: 0; font-size: inherit; color: inherit; white-space: pre; }
+</style>
