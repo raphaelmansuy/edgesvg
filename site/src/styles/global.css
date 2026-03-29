@@ -3,6 +3,16 @@
 /* Smooth scroll */
 html { scroll-behavior: smooth; }
 
+/* Ensure doc headings are readable in light mode */
+.sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--es-text-primary);
+}
+
+/* In dark mode, use a soft mint tint for headings */
+[data-theme='dark'] .sl-markdown-content :is(h1, h2, h3, h4, h5, h6) {
+  color: #e2fdf0;
+}
+
 /* Code blocks */
 .sl-markdown-content pre {
   background: var(--es-code-bg) !important;

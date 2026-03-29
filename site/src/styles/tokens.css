@@ -16,10 +16,15 @@
   --sl-color-accent-low: #d1fae5;
   --sl-color-accent: #10b981;
   --sl-color-accent-high: #059669;
-  --sl-color-white: #f0fdf4;
+  /* NOTE: --sl-color-white is intentionally NOT overridden in light mode
+     so Starlight's heading text remains readable on white backgrounds. */
 
   --sl-font: 'Inter', system-ui, sans-serif;
   --sl-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Taller header to accommodate the secondary nav strip (3.5rem primary + 2.25rem subnav) */
+  --sl-nav-height: 5.75rem;
+  --es-header-row-height: 3.5rem;
 }
 
 [data-theme='dark'] {
@@ -31,4 +36,6 @@
   --sl-color-accent-low: #022c22;
   --sl-color-accent: #34d399;
   --sl-color-accent-high: #6ee7b7;
+  /* Starlight uses --sl-color-white for heading text in dark mode — light mint looks great */
+  --sl-color-white: #f0fdf4;
 }

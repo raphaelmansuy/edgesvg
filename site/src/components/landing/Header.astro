@@ -1,0 +1,192 @@
+---
+// Header override: Starlight top bar + secondary nav strip
+import config from 'virtual:starlight/user-config';
+import LanguageSelect from 'virtual:starlight/components/LanguageSelect';
+import Search from 'virtual:starlight/components/Search';
+import SiteTitle from 'virtual:starlight/components/SiteTitle';
+import SocialIcons from 'virtual:starlight/components/SocialIcons';
+import ThemeSelect from 'virtual:starlight/components/ThemeSelect';
+
+const shouldRenderSearch =
+  config.pagefind ||
+  config.components.Search !== '@astrojs/starlight/components/Search.astro';
+---
+
+<!-- Primary header bar (mirrors Starlight default) -->
+<div class="header">
+  <div class="title-wrapper sl-flex">
+    <SiteTitle />
+  </div>
+  <div class="sl-flex print:hidden">
+    {shouldRenderSearch && <Search />}
+  </div>
+  <div class="sl-hidden md:sl-flex print:hidden right-group">
+    <div class="sl-flex social-icons">
+      <SocialIcons />
+    </div>
+    <ThemeSelect />
+    <LanguageSelect />
+  </div>
+</div>
+
+<!-- Secondary nav strip -->
+<nav class="es-subnav print:hidden" aria-label="Section navigation">
+  <div class="es-subnav-inner">
+    <div class="es-subnav-links">
+      <a href="/getting-started/quick-start-python/">Docs</a>
+      <a href="/api/python/">API Reference</a>
+      <a href="/concepts/algorithm/">Concepts</a>
+      <a href="/guides/batch-conversion/">Guides</a>
+      <a href="/guides/cicd/">CI/CD</a>
+      <a href="/changelog/">Changelog</a>
+      <a
+        href="https://raphaelmansuy.github.io/edgesvg/demo/"
+        target="_blank"
+        rel="noopener"
+        class="demo-link">Live Demo ↗</a>
+    </div>
+    <div class="es-subnav-badges">
+      <a href="https://pypi.org/project/edgesvg/" target="_blank" rel="noopener" class="badge">PyPI</a>
+      <a href="https://www.npmjs.com/package/edgesvg" target="_blank" rel="noopener" class="badge">npm</a>
+      <a href="https://crates.io/crates/edgesvg" target="_blank" rel="noopener" class="badge">crates.io</a>
+    </div>
+  </div>
+</nav>
+
+<style>
+  /* ── Same layout as Starlight's original Header.astro ────────────────── */
+  .header {
+    display: flex;
+    gap: var(--sl-nav-gap);
+    justify-content: space-between;
+    align-items: center;
+    height: var(--es-header-row-height, 3.5rem);
+  }
+
+  .title-wrapper {
+    overflow: clip;
+    padding: 0.25rem;
+    margin: -0.25rem;
+    min-width: 0;
+  }
+
+  .right-group,
+  .social-icons {
+    gap: 1rem;
+    align-items: center;
+  }
+
+  .social-icons::after {
+    content: '';
+    height: 2rem;
+    border-inline-end: 1px solid var(--sl-color-gray-5);
+  }
+
+  @media (min-width: 50rem) {
+    :global(:root[data-has-sidebar]) .header {
+      --__sidebar-pad: calc(2 * var(--sl-nav-pad-x));
+    }
+    :global(:root:not([data-has-toc])) {
+      --__toc-width: 0rem;
+    }
+    .header {
+      --__sidebar-width: max(0rem, var(--sl-content-inline-start, 0rem) - var(--sl-nav-pad-x));
+      --__main-column-fr: calc(
+        (
+          100% + var(--__sidebar-pad, 0rem) - var(--__toc-width, var(--sl-sidebar-width)) -
+          (2 * var(--__toc-width, var(--sl-nav-pad-x))) - var(--sl-content-inline-start, 0rem) -
+          var(--sl-content-width)
+        ) / 2
+      );
+      display: grid;
+      grid-template-columns:
+        minmax(
+          calc(var(--__sidebar-width) + max(0rem, var(--__main-column-fr) - var(--sl-nav-gap))),
+          auto
+        )
+        1fr
+        auto;
+      align-content: center;
+    }
+  }
+
+  /* ── Secondary nav strip ─────────────────────────────────────────────── */
+  .es-subnav {
+    width: 100%;
+    border-top: 1px solid var(--sl-color-hairline-shade);
+    height: 2.25rem;
+    display: flex;
+    align-items: center;
+  }
+
+  .es-subnav-inner {
+    width: 100%;
+    padding: 0 var(--sl-nav-pad-x);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+
+  .es-subnav-links {
+    display: flex;
+    align-items: center;
+    gap: 0.125rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .es-subnav-links::-webkit-scrollbar { display: none; }
+
+  .es-subnav-links a {
+    padding: 0.2rem 0.55rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--sl-color-gray-2);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color 0.15s, background 0.15s;
+  }
+
+  .es-subnav-links a:hover {
+    color: var(--sl-color-accent);
+    background: color-mix(in srgb, var(--sl-color-accent) 10%, transparent);
+  }
+
+  .es-subnav-links .demo-link {
+    color: var(--sl-color-accent);
+    font-weight: 600;
+  }
+
+  .es-subnav-badges {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    flex-shrink: 0;
+  }
+
+  .badge {
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    border: 1px solid var(--sl-color-gray-5);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--sl-color-gray-3);
+    text-decoration: none;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .badge:hover {
+    border-color: var(--sl-color-accent);
+    color: var(--sl-color-accent);
+  }
+
+  @media (max-width: 50rem) {
+    .es-subnav-badges { display: none; }
+  }
+
+  @media (max-width: 30rem) {
+    .es-subnav { display: none; }
+  }
+</style>

@@ -1,0 +1,104 @@
+---
+// TopNav — secondary nav bar rendered below Starlight's header bar
+// Starlight renders this component in the Header slot
+---
+<nav class="es-topnav" aria-label="Primary navigation">
+  <div class="es-topnav-inner">
+    <div class="es-topnav-links">
+      <a href="/getting-started/quick-start-python/" class="es-topnav-link">Docs</a>
+      <a href="/api/python/" class="es-topnav-link">API Reference</a>
+      <a href="/concepts/algorithm/" class="es-topnav-link">Concepts</a>
+      <a href="/guides/batch-conversion/" class="es-topnav-link">Guides</a>
+      <a href="/guides/cicd/" class="es-topnav-link">CI/CD</a>
+      <a href="/changelog/" class="es-topnav-link">Changelog</a>
+      <a href="https://raphaelmansuy.github.io/edgesvg/demo/" target="_blank" rel="noopener" class="es-topnav-link es-topnav-demo">Live Demo ↗</a>
+    </div>
+    <div class="es-topnav-registries">
+      <a href="https://pypi.org/project/edgesvg/" target="_blank" rel="noopener" class="es-topnav-badge">PyPI</a>
+      <a href="https://www.npmjs.com/package/edgesvg" target="_blank" rel="noopener" class="es-topnav-badge">npm</a>
+      <a href="https://crates.io/crates/edgesvg" target="_blank" rel="noopener" class="es-topnav-badge">crates.io</a>
+    </div>
+  </div>
+</nav>
+
+<style>
+  .es-topnav {
+    width: 100%;
+    border-bottom: 1px solid var(--es-border, #e5e7eb);
+    background: var(--es-bg, #fff);
+    font-size: 0.825rem;
+  }
+
+  [data-theme='dark'] .es-topnav {
+    background: var(--es-bg, #0f172a);
+    border-color: var(--es-border, #1e293b);
+  }
+
+  .es-topnav-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 36px;
+  }
+
+  .es-topnav-links {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+  }
+
+  .es-topnav-link {
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    color: var(--es-text-secondary, #4b5563);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+
+  .es-topnav-link:hover {
+    color: var(--sl-color-accent, #10b981);
+    background: var(--es-accent-glow, rgba(16,185,129,0.08));
+  }
+
+  .es-topnav-demo {
+    color: var(--sl-color-accent, #10b981);
+    font-weight: 600;
+  }
+
+  .es-topnav-registries {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .es-topnav-badge {
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    border: 1px solid var(--es-border, #e5e7eb);
+    color: var(--es-text-secondary, #6b7280);
+    text-decoration: none;
+    font-size: 0.75rem;
+    font-weight: 600;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .es-topnav-badge:hover {
+    border-color: var(--sl-color-accent, #10b981);
+    color: var(--sl-color-accent, #10b981);
+  }
+
+  @media (max-width: 768px) {
+    .es-topnav-registries { display: none; }
+    .es-topnav-links { gap: 0; overflow-x: auto; }
+    .es-topnav-link { font-size: 0.78rem; padding: 0.2rem 0.45rem; }
+  }
+
+  @media (max-width: 480px) {
+    .es-topnav { display: none; }
+  }
+</style>
