@@ -20,6 +20,12 @@ html { scroll-behavior: smooth; }
   border-radius: 0.5rem;
 }
 
+/* Hide Starlight's auto-generated <hr> separator on splash pages */
+.sl-markdown-content > hr:first-of-type,
+[data-template='splash'] .sl-markdown-content > hr {
+  display: none;
+}
+
 /* Clean up Starlight sidebar */
 .sidebar-pane {
   background: var(--es-bg-subtle);

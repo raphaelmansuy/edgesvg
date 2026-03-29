@@ -20,7 +20,8 @@
     "three": "^0.183.2"
   },
   "devDependencies": {
-    "@types/three": "^0.183.1"
+    "@types/three": "^0.183.1",
+    "shiki": "^4.0.2"
   },
   "packageManager": "pnpm@10.13.1"
 }

@@ -34,6 +34,15 @@ export default defineConfig({
       editLink: {
         baseUrl: 'https://github.com/raphaelmansuy/edgesvg/edit/main/site/',
       },
+      expressiveCode: {
+        themes: ['dracula', 'github-light'],
+        styleOverrides: {
+          borderRadius: '0.5rem',
+          codeFontFamily: "'JetBrains Mono', monospace",
+          codeFontSize: '0.875rem',
+          codeLineHeight: '1.7',
+        },
+      },
       customCss: [
         './src/styles/tokens.css',
         './src/styles/global.css',

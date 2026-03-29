@@ -1,4 +1,6 @@
 ---
+import { codeToHtml } from 'shiki';
+
 interface Tab {
   label: string;
   lang: string;
@@ -10,32 +12,40 @@ interface Props {
   tabs: Tab[];
 }
 const { title, subtitle, tabs } = Astro.props;
+
+// Pre-render syntax highlighted HTML at build time
+const highlightedCodes = await Promise.all(
+  tabs.map(tab => codeToHtml(tab.code, { lang: tab.lang, theme: 'dracula' }))
+);
+---
 ---
 <section class="quick-start">
   <div class="qs-header">
     <h2>{title}</h2>
     <p>{subtitle}</p>
   </div>
-  <div class="qs-tabs" role="tablist" aria-label="Installation and usage examples">
-    {tabs.map((tab, i) => (
-      <button role="tab" class={`qs-tab ${i === 0 ? 'active' : ''}`} data-tab={i} aria-selected={i === 0 ? 'true' : 'false'}>
-        {tab.label}
-      </button>
-    ))}
-  </div>
-  <div class="qs-panels">
-    {tabs.map((tab, i) => (
-      <div role="tabpanel" class={`qs-panel ${i === 0 ? 'active' : ''}`} data-panel={i}>
-        <div class="qs-panel-header">
-          <span class="qs-lang">{tab.lang}</span>
-          <button class="qs-copy" data-copy={tab.code} aria-label={`Copy ${tab.label} code`}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            Copy
-          </button>
+  <div class="qs-container">
+    <div class="qs-tabs" role="tablist" aria-label="Installation and usage examples">
+      {tabs.map((tab, i) => (
+        <button role="tab" class={`qs-tab ${i === 0 ? 'active' : ''}`} data-tab={i} aria-selected={i === 0 ? 'true' : 'false'}>
+          {tab.label}
+        </button>
+      ))}
+    </div>
+    <div class="qs-panels">
+      {tabs.map((tab, i) => (
+        <div role="tabpanel" class={`qs-panel ${i === 0 ? 'active' : ''}`} data-panel={i}>
+          <div class="qs-panel-header">
+            <span class="qs-lang">{tab.lang}</span>
+            <button class="qs-copy" data-copy={tab.code} aria-label={`Copy ${tab.label} code`}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copy
+            </button>
+          </div>
+          <div class="qs-code-wrapper" set:html={highlightedCodes[i]} />
         </div>
-        <pre class="qs-code"><code>{tab.code}</code></pre>
-      </div>
-    ))}
+      ))}
+    </div>
   </div>
 </section>
 
@@ -59,8 +69,9 @@ const { title, subtitle, tabs } = Astro.props;
     btn.addEventListener('click', async () => {
       const text = (btn as HTMLElement).dataset.copy || '';
       await navigator.clipboard.writeText(text).catch(() => {});
+      const inner = (btn as HTMLElement).innerHTML;
       (btn as HTMLElement).textContent = '✓ Copied';
-      setTimeout(() => { (btn as HTMLElement).innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy`; }, 1800);
+      setTimeout(() => { (btn as HTMLElement).innerHTML = inner; }, 1800);
     });
   });
 </script>
@@ -70,16 +81,59 @@ const { title, subtitle, tabs } = Astro.props;
   .qs-header { text-align: center; margin-bottom: 2.5rem; max-width: 1100px; margin-left: auto; margin-right: auto; }
   .qs-header h2 { font-size: clamp(1.75rem, 4vw, 2.4rem); font-weight: 800; margin-bottom: 0.75rem; color: var(--es-text-primary, #111827); }
   .qs-header p { font-size: 1.05rem; color: var(--es-text-secondary, #4b5563); }
-  .qs-tabs { display: flex; gap: 0.35rem; justify-content: center; flex-wrap: wrap; max-width: 1100px; margin: 0 auto 0; padding-bottom: 0; background: none; }
-  .qs-tab { padding: 0.5rem 1.1rem; background: transparent; border: 1px solid var(--es-border, #e5e7eb); border-radius: 0.4rem 0.4rem 0 0; border-bottom: none; font-size: 0.88rem; font-weight: 600; cursor: pointer; color: var(--es-text-secondary, #4b5563); transition: background 0.15s, color 0.15s; }
-  .qs-tab.active { background: var(--es-code-bg, #1e293b); color: #e2e8f0; border-color: var(--es-code-bg, #1e293b); }
-  .qs-panels { max-width: 1100px; margin: 0 auto; }
-  .qs-panel { display: none; background: var(--es-code-bg, #1e293b); border: 1px solid rgba(255,255,255,0.08); border-radius: 0 0.5rem 0.5rem 0.5rem; overflow: hidden; }
+
+  /* shared container so tab strip + panel share the same max-width box */
+  .qs-container { max-width: 1100px; margin: 0 auto; }
+
+  /* pill-style tabs — no positional dependency on panel corners */
+  .qs-tabs { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.75rem; background: none; }
+  .qs-tab {
+    padding: 0.45rem 1.25rem;
+    background: transparent;
+    border: 1.5px solid var(--es-border, #e5e7eb);
+    border-radius: 999px;
+    font-size: 0.88rem; font-weight: 600; cursor: pointer;
+    color: var(--es-text-secondary, #4b5563);
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .qs-tab:hover { border-color: var(--es-accent, #10b981); color: var(--es-accent, #10b981); }
+  .qs-tab.active {
+    background: #282a36;
+    color: #f8f8f2;
+    border-color: #6272a4;
+  }
+
+  /* panel — fully rounded, no dependency on active tab position */
+  .qs-panels { }
+  .qs-panel { display: none; background: #282a36; border: 1px solid rgba(255,255,255,0.08); border-radius: 0.75rem; overflow: hidden; }
   .qs-panel.active { display: block; }
+
   .qs-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid rgba(255,255,255,0.07); }
-  .qs-lang { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #64748b; font-family: var(--sl-font-mono, monospace); }
-  .qs-copy { display: inline-flex; align-items: center; gap: 0.35rem; background: none; border: 1px solid rgba(255,255,255,0.15); border-radius: 0.3rem; padding: 0.3rem 0.7rem; font-size: 0.78rem; color: #94a3b8; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
-  .qs-copy:hover { color: #34d399; border-color: #34d399; }
-  .qs-code { margin: 0; padding: 1.5rem; overflow-x: auto; font-family: var(--sl-font-mono, monospace); font-size: 0.875rem; line-height: 1.7; color: #e2e8f0; background: none; border: none; }
-  .qs-code code { background: none; padding: 0; font-size: inherit; color: inherit; white-space: pre; }
+  .qs-lang { font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: #6272a4; font-family: var(--sl-font-mono, monospace); }
+  .qs-copy { display: inline-flex; align-items: center; gap: 0.35rem; background: none; border: 1px solid rgba(255,255,255,0.15); border-radius: 0.3rem; padding: 0.3rem 0.7rem; font-size: 0.78rem; color: #bd93f9; cursor: pointer; transition: color 0.15s, border-color 0.15s; }
+  .qs-copy:hover { color: #50fa7b; border-color: #50fa7b; }
+
+  /* Shiki-generated code block overrides */
+  .qs-code-wrapper { overflow-x: auto; }
+  .qs-code-wrapper :global(pre.shiki) {
+    margin: 0;
+    padding: 1.5rem;
+    background: transparent !important;
+    font-family: var(--sl-font-mono, monospace);
+    font-size: 0.875rem;
+    line-height: 1.7;
+    overflow-x: auto;
+  }
+  .qs-code-wrapper :global(pre.shiki code) {
+    background: none;
+    padding: 0;
+    font-size: inherit;
+    white-space: pre;
+  }
+
+  /* Mobile responsive */
+  @media (max-width: 640px) {
+    .quick-start { padding: 3rem 1.25rem; }
+    .qs-tab { padding: 0.4rem 0.9rem; font-size: 0.82rem; }
+  }
 </style>
