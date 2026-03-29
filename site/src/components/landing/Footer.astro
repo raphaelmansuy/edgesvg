@@ -1,5 +1,8 @@
 ---
 // Custom Footer for EdgeSVG
+const base = import.meta.env.BASE_URL.endsWith('/')
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
 ---
 <footer class="site-footer">
   <div class="footer-inner">
@@ -24,42 +27,42 @@
     <div class="footer-links">
       <div class="footer-link-group">
         <h3>Getting Started</h3>
-        <a href="/getting-started/quick-start-python/">Python</a>
-        <a href="/getting-started/quick-start-nodejs/">Node.js</a>
-        <a href="/getting-started/quick-start-cli/">CLI</a>
-        <a href="/getting-started/quick-start-rust/">Rust</a>
-        <a href="/getting-started/quick-start-wasm/">WebAssembly</a>
+        <a href={`${base}getting-started/quick-start-python/`}>Python</a>
+        <a href={`${base}getting-started/quick-start-nodejs/`}>Node.js</a>
+        <a href={`${base}getting-started/quick-start-cli/`}>CLI</a>
+        <a href={`${base}getting-started/quick-start-rust/`}>Rust</a>
+        <a href={`${base}getting-started/quick-start-wasm/`}>WebAssembly</a>
       </div>
       <div class="footer-link-group">
         <h3>API Reference</h3>
-        <a href="/api/python/">Python SDK</a>
-        <a href="/api/nodejs/">Node.js SDK</a>
-        <a href="/api/cli/">CLI Reference</a>
-        <a href="/api/rust/">Rust API</a>
-        <a href="/api/wasm/">WASM SDK</a>
+        <a href={`${base}api/python/`}>Python SDK</a>
+        <a href={`${base}api/nodejs/`}>Node.js SDK</a>
+        <a href={`${base}api/cli/`}>CLI Reference</a>
+        <a href={`${base}api/rust/`}>Rust API</a>
+        <a href={`${base}api/wasm/`}>WASM SDK</a>
       </div>
       <div class="footer-link-group">
         <h3>Guides</h3>
-        <a href="/guides/batch-conversion/">Batch Conversion</a>
-        <a href="/guides/cicd/">CI/CD & Publishing</a>
-        <a href="/concepts/algorithm/">Algorithm</a>
-        <a href="/concepts/quality-metrics/">Quality Metrics</a>
-        <a href="/concepts/modes/">Vectorization Modes</a>
-        <a href="https://raphaelmansuy.github.io/edgesvg/demo/" target="_blank" rel="noopener">Live Demo ↗</a>
+        <a href={`${base}guides/batch-conversion/`}>Batch Conversion</a>
+        <a href={`${base}guides/cicd/`}>CI/CD & Publishing</a>
+        <a href={`${base}concepts/algorithm/`}>Algorithm</a>
+        <a href={`${base}concepts/quality-metrics/`}>Quality Metrics</a>
+        <a href={`${base}concepts/modes/`}>Vectorization Modes</a>
+        <a href={`${base}demo/`} target="_blank" rel="noopener">Live Demo ↗</a>
       </div>
       <div class="footer-link-group">
         <h3>SDKs</h3>
         <a href="https://pypi.org/project/edgesvg/" target="_blank" rel="noopener">Python (PyPI)</a>
         <a href="https://www.npmjs.com/package/edgesvg" target="_blank" rel="noopener">Node.js (npm)</a>
         <a href="https://crates.io/crates/edgesvg" target="_blank" rel="noopener">Rust (crates.io)</a>
-        <a href="/getting-started/quick-start-wasm/">WebAssembly</a>
+        <a href={`${base}getting-started/quick-start-wasm/`}>WebAssembly</a>
       </div>
       <div class="footer-link-group">
         <h3>Project</h3>
         <a href="https://github.com/raphaelmansuy/edgesvg" target="_blank" rel="noopener">GitHub</a>
         <a href="https://github.com/raphaelmansuy/edgesvg/issues" target="_blank" rel="noopener">Issues</a>
         <a href="https://github.com/raphaelmansuy/edgesvg/discussions" target="_blank" rel="noopener">Discussions</a>
-        <a href="/changelog/">Changelog</a>
+        <a href={`${base}changelog/`}>Changelog</a>
         <a href="https://github.com/raphaelmansuy/edgesvg/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>
         <a href="https://github.com/raphaelmansuy/edgesvg/blob/main/LICENSE" target="_blank" rel="noopener">License (Apache 2.0)</a>
       </div>

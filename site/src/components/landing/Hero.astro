@@ -1,6 +1,8 @@
 ---
 // Hero override for Starlight — cinematic landing hero for EdgeSVG
-const base = import.meta.env.BASE_URL;
+const base = import.meta.env.BASE_URL.endsWith('/')
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
 const installCmd = 'pip install edgesvg';
 ---
 <section class="hero" aria-label="EdgeSVG introduction">
@@ -30,7 +32,7 @@ const installCmd = 'pip install edgesvg';
         Get Started
         <svg class="btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
       </a>
-      <a href="https://raphaelmansuy.github.io/edgesvg/demo/" target="_blank" rel="noopener noreferrer" class="btn-demo">
+      <a href={`${base}demo/`} target="_blank" rel="noopener noreferrer" class="btn-demo">
         Live Demo
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
       </a>
@@ -85,6 +87,16 @@ const installCmd = 'pip install edgesvg';
 </section>
 
 <script>
+  // Some splash renders inject a leading text node containing `---` before
+  // the first section; remove it to avoid showing a visual separator string.
+  const splashMarkdown = document.querySelector('.sl-markdown-content');
+  if (splashMarkdown && splashMarkdown.firstChild?.nodeType === Node.TEXT_NODE) {
+    const firstText = splashMarkdown.firstChild.textContent?.trim() || '';
+    if (firstText === '---') {
+      splashMarkdown.firstChild.remove();
+    }
+  }
+
   // Copy button
   const copyBtn = document.querySelector('.copy-btn') as HTMLButtonElement | null;
   if (copyBtn) {
@@ -109,10 +121,19 @@ const installCmd = 'pip install edgesvg';
       if (current >= target) clearInterval(timer);
     }, 30);
   };
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach(e => { if (e.isIntersecting) { animateCounter(e.target); io.unobserve(e.target); } });
-  }, { threshold: 0.3 });
-  metricEls.forEach(el => io.observe(el));
+  if ('IntersectionObserver' in window) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (e.isIntersecting) {
+          animateCounter(e.target);
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.05, rootMargin: '0px 0px -10% 0px' });
+    metricEls.forEach(el => io.observe(el));
+  } else {
+    metricEls.forEach((el) => animateCounter(el));
+  }
 
   // Three.js canvas — raster-to-vector transformation animation
   const canvas = document.getElementById('hero-canvas') as HTMLCanvasElement | null;

@@ -163,6 +163,6 @@ wasm-pack build crates/edgesvg-wasm --target web --out-dir pkg --release
 
 ## Live Demo
 
-Try the EdgeSVG WASM SDK live: [**Open Demo →**](/guides/demo/)
+Try the EdgeSVG WASM SDK live: [**Open Demo →**](../../demo/)
 
 Drag and drop any PNG, JPG, or WebP image. Vectorization runs entirely in your browser — no uploads, no server.

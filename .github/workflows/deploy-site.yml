@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      - 'demo/**'
+      - 'crates/edgesvg-wasm/**'
       - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
 
@@ -34,6 +36,14 @@ jobs:
           cache: pnpm
           cache-dependency-path: site/pnpm-lock.yaml
 
+      - name: Setup Rust toolchain (for demo WASM build)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked
+
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
@@ -48,6 +58,18 @@ jobs:
         env:
           SITE: ${{ steps.pages.outputs.origin }}
           BASE_PATH: ${{ steps.pages.outputs.base_path }}
+
+      - name: Build demo WASM package
+        run: wasm-pack build crates/edgesvg-wasm --target web --out-dir ../../demo/wasm-pkg
+
+      - name: Install and build demo app
+        working-directory: demo
+        run: npm ci && npm run build
+        env:
+          DEMO_BASE_PATH: ${{ steps.pages.outputs.base_path }}/demo/
+
+      - name: Copy demo into site artifact
+        run: mkdir -p site/dist/demo && cp -R demo/dist/. site/dist/demo/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

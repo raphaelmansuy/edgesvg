@@ -1,17 +1,20 @@
 ---
 // TopNav — secondary nav bar rendered below Starlight's header bar
 // Starlight renders this component in the Header slot
+const base = import.meta.env.BASE_URL.endsWith('/')
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
 ---
 <nav class="es-topnav" aria-label="Primary navigation">
   <div class="es-topnav-inner">
     <div class="es-topnav-links">
-      <a href="/getting-started/quick-start-python/" class="es-topnav-link">Docs</a>
-      <a href="/api/python/" class="es-topnav-link">API Reference</a>
-      <a href="/concepts/algorithm/" class="es-topnav-link">Concepts</a>
-      <a href="/guides/batch-conversion/" class="es-topnav-link">Guides</a>
-      <a href="/guides/cicd/" class="es-topnav-link">CI/CD</a>
-      <a href="/changelog/" class="es-topnav-link">Changelog</a>
-      <a href="https://raphaelmansuy.github.io/edgesvg/demo/" target="_blank" rel="noopener" class="es-topnav-link es-topnav-demo">Live Demo ↗</a>
+      <a href={`${base}getting-started/quick-start-python/`} class="es-topnav-link">Docs</a>
+      <a href={`${base}api/python/`} class="es-topnav-link">API Reference</a>
+      <a href={`${base}concepts/algorithm/`} class="es-topnav-link">Concepts</a>
+      <a href={`${base}guides/batch-conversion/`} class="es-topnav-link">Guides</a>
+      <a href={`${base}guides/cicd/`} class="es-topnav-link">CI/CD</a>
+      <a href={`${base}changelog/`} class="es-topnav-link">Changelog</a>
+      <a href={`${base}demo/`} target="_blank" rel="noopener" class="es-topnav-link es-topnav-demo">Live Demo ↗</a>
     </div>
     <div class="es-topnav-registries">
       <a href="https://pypi.org/project/edgesvg/" target="_blank" rel="noopener" class="es-topnav-badge">PyPI</a>

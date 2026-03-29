@@ -2,7 +2,6 @@
 title: EdgeSVG — Production Raster-to-SVG Vectorization. Scored. Open Source.
 description: EdgeSVG converts PNG, JPG, and WebP into production-quality SVGs — scored with SSIM, edge similarity, IoU, and topology. Python, Node.js, CLI, Rust, and WebAssembly. Zero ML. Zero dependencies.
 template: splash
-hero: {}
 ---
 
 import FeatureGrid from '../../components/landing/FeatureGrid.astro';
@@ -133,7 +132,7 @@ console.log('SSIM:', result.report.metrics.ssim.toFixed(4));
 const img = document.querySelector('#output');
 img.src = 'data:image/svg+xml,' + encodeURIComponent(result.svg);
 
-// Try it: /guides/demo/`
+// Try it: /demo/`
     }
   ]}
 />
@@ -222,28 +221,28 @@ img.src = 'data:image/svg+xml,' + encodeURIComponent(result.svg);
       title: 'Logo & Icon Vectorization',
       description: 'Convert brand assets, icons, and UI elements into clean scalable SVGs. The logo mode produces minimal paths with clean curves — optimized for editability.',
       tags: ['Brand Assets', 'Icons', 'Clean Paths'],
-      href: '/getting-started/quick-start-cli/'
+      href: 'getting-started/quick-start-cli/'
     },
     {
       icon: 'automation',
       title: 'Build Pipeline Integration',
       description: 'Run EdgeSVG in CI/CD to automatically vectorize raster assets at build time. JSON output with quality metrics lets you gate on SSIM thresholds.',
       tags: ['CI/CD', 'GitHub Actions', 'Automation'],
-      href: '/guides/cicd/'
+      href: 'guides/cicd/'
     },
     {
       icon: 'browser',
       title: 'In-Browser SVG Conversion',
       description: 'The WebAssembly SDK brings the full Rust engine to the browser. No server required — users upload a PNG and get SVG output with quality scores instantly.',
       tags: ['WebAssembly', 'Privacy', 'Offline', 'React/Vue'],
-      href: '/guides/demo/'
+      href: 'demo/'
     },
     {
       icon: 'batch',
       title: 'Batch Asset Processing',
       description: 'Vectorize entire directories of raster images with the benchmark command. JSON and Markdown reports show per-image quality scores and aggregated summaries.',
       tags: ['Batch', 'Reporting', 'JSON Reports'],
-      href: '/guides/batch-conversion/'
+      href: 'guides/batch-conversion/'
     },
     {
       icon: 'design',
@@ -263,7 +262,7 @@ img.src = 'data:image/svg+xml,' + encodeURIComponent(result.svg);
 <CtaSection
   title="Start Converting Raster to SVG in Under a Minute"
   subtitle="pip install edgesvg and your first scored vectorization runs in seconds. No GPU. No ML models. No infrastructure."
-  primaryHref="/getting-started/quick-start-python/"
+  primaryHref="getting-started/quick-start-python/"
   secondaryHref="https://github.com/raphaelmansuy/edgesvg"
   primaryLabel="Get Started Free"
   secondaryLabel="Star on GitHub"

@@ -9,6 +9,9 @@ interface Props {
   metrics: MetricRow[];
 }
 const { title, subtitle, metrics } = Astro.props;
+const base = import.meta.env.BASE_URL.endsWith('/')
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
 ---
 <section class="benchmark-section">
   <div class="bs-inner">
@@ -39,7 +42,7 @@ const { title, subtitle, metrics } = Astro.props;
             <li><strong>Topology</strong> — shape count and path structure</li>
             <li><strong>IoU</strong> — foreground coverage</li>
           </ul>
-          <a href="/concepts/quality-metrics/" class="bs-cta-link">
+          <a href={`${base}concepts/quality-metrics/`} class="bs-cta-link">
             Read the metrics guide →
           </a>
         </div>

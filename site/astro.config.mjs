@@ -4,12 +4,17 @@ import starlight from '@astrojs/starlight';
 import sitemap from '@astrojs/sitemap';
 import tailwindcss from '@tailwindcss/vite';
 
-const siteUrl = 'https://edgesvg.dev';
-const fullUrl = siteUrl;
+// CI passes SITE and BASE_PATH from configure-pages outputs.
+// Default to GitHub Pages origin for local builds without CI env vars.
+const siteUrl = process.env.SITE || 'https://raphaelmansuy.github.io';
+const basePath = process.env.BASE_PATH || '/edgesvg';
+const normalizedBase = basePath.endsWith('/') ? basePath : `${basePath}/`;
+const fullUrl = new URL(normalizedBase, siteUrl).toString().replace(/\/$/, '');
 const ogImageUrl = `${fullUrl}/og-image.png`;
 
 export default defineConfig({
   site: siteUrl,
+  base: basePath,
   integrations: [
     sitemap({
       changefreq: 'weekly',
@@ -55,7 +60,7 @@ export default defineConfig({
       head: [
         {
           tag: 'link',
-          attrs: { rel: 'sitemap', href: '/sitemap-index.xml' },
+          attrs: { rel: 'sitemap', href: `${normalizedBase}sitemap-index.xml` },
         },
         {
           tag: 'link',
@@ -102,7 +107,7 @@ export default defineConfig({
           },
         },
         { tag: 'meta', attrs: { name: 'robots', content: 'index, follow' } },
-        { tag: 'meta', attrs: { property: 'og:url', content: siteUrl } },
+        { tag: 'meta', attrs: { property: 'og:url', content: fullUrl } },
         // JSON-LD: SoftwareApplication
         {
           tag: 'script',
@@ -159,7 +164,7 @@ export default defineConfig({
           label: 'Guides',
           items: [
             { label: 'Batch Conversion', slug: 'guides/batch-conversion' },
-            { label: 'Live WASM Demo ↗', link: 'https://raphaelmansuy.github.io/edgesvg/demo/', attrs: { target: '_blank', rel: 'noopener' } },
+            { label: 'Live WASM Demo ↗', link: `${normalizedBase}demo/`, attrs: { target: '_blank', rel: 'noopener' } },
             { label: 'CI/CD & Publishing', slug: 'guides/cicd' },
           ],
         },

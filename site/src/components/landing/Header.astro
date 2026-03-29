@@ -7,6 +7,10 @@ import SiteTitle from 'virtual:starlight/components/SiteTitle';
 import SocialIcons from 'virtual:starlight/components/SocialIcons';
 import ThemeSelect from 'virtual:starlight/components/ThemeSelect';
 
+const base = import.meta.env.BASE_URL.endsWith('/')
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
+
 const shouldRenderSearch =
   config.pagefind ||
   config.components.Search !== '@astrojs/starlight/components/Search.astro';
@@ -33,14 +37,14 @@ const shouldRenderSearch =
 <nav class="es-subnav print:hidden" aria-label="Section navigation">
   <div class="es-subnav-inner">
     <div class="es-subnav-links">
-      <a href="/getting-started/quick-start-python/">Docs</a>
-      <a href="/api/python/">API Reference</a>
-      <a href="/concepts/algorithm/">Concepts</a>
-      <a href="/guides/batch-conversion/">Guides</a>
-      <a href="/guides/cicd/">CI/CD</a>
-      <a href="/changelog/">Changelog</a>
+      <a href={`${base}getting-started/quick-start-python/`}>Docs</a>
+      <a href={`${base}api/python/`}>API Reference</a>
+      <a href={`${base}concepts/algorithm/`}>Concepts</a>
+      <a href={`${base}guides/batch-conversion/`}>Guides</a>
+      <a href={`${base}guides/cicd/`}>CI/CD</a>
+      <a href={`${base}changelog/`}>Changelog</a>
       <a
-        href="https://raphaelmansuy.github.io/edgesvg/demo/"
+        href={`${base}demo/`}
         target="_blank"
         rel="noopener"
         class="demo-link">Live Demo ↗</a>
