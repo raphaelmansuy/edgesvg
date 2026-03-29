@@ -27,6 +27,13 @@
   --es-header-row-height: 3.5rem;
 }
 
+/* On mobile the subnav strip is hidden — revert to single-row height */
+@media (max-width: 30rem) {
+  :root {
+    --sl-nav-height: 3.5rem;
+  }
+}
+
 [data-theme='dark'] {
   --es-text-primary: #f9fafb;
   --es-text-secondary: #9ca3af;
